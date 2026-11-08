@@ -76,8 +76,8 @@ export default function DailyCheckinPage() {
     },
     onSuccess: async (result) => {
       setNotice(
-        result.success && result.amount === 45
-          ? "45 FCFA ont été ajoutés à votre solde de retrait."
+        result.success && Number.isFinite(result.amount)
+          ? `${formatFcfa(result.amount)} ont été ajoutés à votre solde de retrait.`
           : "La récompense n’a pas pu être confirmée. Actualisez votre compte.",
       );
       await Promise.allSettled([

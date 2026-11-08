@@ -1,5 +1,21 @@
-export const DAILY_CHECKIN_REWARD = 45;
+export const DAILY_CHECKIN_REWARDS_BY_VIP_LEVEL = [
+  45,
+  60,
+  75,
+  90,
+  105,
+  120,
+  135,
+  150,
+] as const;
+export const DAILY_CHECKIN_REWARD = DAILY_CHECKIN_REWARDS_BY_VIP_LEVEL[0];
 export const DAILY_CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+export function getDailyCheckinRewardForVip(vipLevel: number): number {
+  const safeLevel = Number.isSafeInteger(vipLevel) ? vipLevel : 0;
+  const boundedLevel = Math.max(1, Math.min(safeLevel, DAILY_CHECKIN_REWARDS_BY_VIP_LEVEL.length));
+  return DAILY_CHECKIN_REWARDS_BY_VIP_LEVEL[boundedLevel - 1];
+}
 
 const DAILY_CHECKIN_TIMEZONES: Record<string, string> = {
   TG: "Africa/Lome",

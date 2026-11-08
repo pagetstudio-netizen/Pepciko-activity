@@ -4,9 +4,19 @@ import {
   calculateDailyCheckinStreak,
   calculateDailyCheckinStreakAfterClaim,
   daysBetweenCheckinDates,
+  getDailyCheckinRewardForVip,
   getDailyCheckinCooldownUntil,
   getDailyCheckinDateKey,
 } from "../shared/daily-checkin";
+
+test("daily check-in rewards increase with VIP level and cap at VIP8", () => {
+  assert.deepEqual(
+    Array.from({ length: 8 }, (_, index) => getDailyCheckinRewardForVip(index + 1)),
+    [45, 60, 75, 90, 105, 120, 135, 150],
+  );
+  assert.equal(getDailyCheckinRewardForVip(0), 45);
+  assert.equal(getDailyCheckinRewardForVip(20), 150);
+});
 
 test("daily check-in dates use the member's West African local calendar", () => {
   const instant = new Date("2026-11-05T23:30:00.000Z");

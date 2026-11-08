@@ -35,7 +35,7 @@ const notices = [
     date: "2026-10-29 09:44:31",
     image: loginThumbnail,
     details: [
-      "Le bonus quotidien est de 45 FCFA et peut être réclamé toutes les 24 heures.",
+      "Le bonus quotidien dépend de votre niveau VIP : de 45 FCFA au niveau VIP1 à 150 FCFA à partir du niveau VIP8.",
       "Il est réservé aux comptes possédant au moins un produit stable actif et est crédité sur le solde de retrait.",
     ],
   },

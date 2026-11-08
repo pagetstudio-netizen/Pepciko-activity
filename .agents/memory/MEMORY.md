@@ -35,7 +35,7 @@
 - [Referral commission eligibility](referral-commission-policy.md) — Pay referral commissions only on the referred user's first paid stable-product purchase.
 - [Product payout policy](product-payout-policy.md) — Product earnings are credited once at maturity; preserve and subtract any amounts already paid on legacy positions.
 - [Balance separation](balance-separation.md) — Keep non-withdrawable deposits and bonuses separate from withdrawable earnings and commissions.
-- [Daily check-in bonus](daily-checkin-bonus.md) — Award fixed 45 FCFA every 24 hours only with an active stable product; missed days reset the streak, not credited funds.
+- [Daily check-in bonus](daily-checkin-bonus.md) — Scale daily rewards from 45 to 150 FCFA by approved-deposit VIP level; preserve the 24-hour active-stable rule.
 - [Authentication viewport](authentication-viewport.md) — Keep login and registration fixed without page scrolling; use the supplied phone, lock, and account field icons.
 - [Signup CAPTCHA and withdrawal password](auth-captcha-transaction-password.md) — Use an in-app CAPTCHA, not SMS OTP; require a separate withdrawal password for withdrawals.
 - [VIP level rules](vip-level-policy.md) — Base VIP on approved cumulative deposits; preserve the user-confirmed thresholds and fixed INR-to-FCFA conversion.

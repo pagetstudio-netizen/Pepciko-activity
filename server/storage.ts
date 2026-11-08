@@ -32,10 +32,11 @@ import {
   calculateDailyCheckinStreak,
   calculateDailyCheckinStreakAfterClaim,
   DAILY_CHECKIN_COOLDOWN_MS,
-  DAILY_CHECKIN_REWARD,
+  getDailyCheckinRewardForVip,
   getDailyCheckinCooldownUntil,
   getDailyCheckinDateKey,
 } from "@shared/daily-checkin";
+import { calculateVipLevels } from "@shared/vip-levels";
 import { eq, and, asc, desc, sql, gte, lte, or, isNull, inArray, lt, ne } from "drizzle-orm";
 import { hashPassword } from "./password-utils";
 import {
@@ -439,7 +440,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId));
     if (!member) return null;
 
-    const [claims, hasActiveStableProduct] = await Promise.all([
+    const [claims, hasActiveStableProduct, approvedDepositSummary] = await Promise.all([
       db.select({
         amount: transactions.amount,
         createdAt: transactions.createdAt,
@@ -451,7 +452,10 @@ export class DatabaseStorage implements IStorage {
         ))
         .orderBy(desc(transactions.createdAt)),
       this.hasActiveStableProduct(userId),
+      getApprovedDepositSummary([userId]),
     ]);
+    const currentVipLevel = calculateVipLevels(approvedDepositSummary.amount).currentLevel;
+    const rewardAmount = getDailyCheckinRewardForVip(currentVipLevel);
 
     const now = new Date();
     const today = getDailyCheckinDateKey(now, member.country);
@@ -494,7 +498,7 @@ export class DatabaseStorage implements IStorage {
     });
 
     return {
-      rewardAmount: DAILY_CHECKIN_REWARD,
+      rewardAmount,
       hasActiveStableProduct,
       canClaim,
       nextClaimAt: !canClaim && cooldownUntil && (cooldownActive || alreadyClaimedToday)
@@ -572,15 +576,25 @@ export class DatabaseStorage implements IStorage {
         return { status: "already_claimed", nextClaimAt: cooldownUntil?.toISOString() ?? null };
       }
 
+      const [approvedDepositSummary] = await tx.select({
+        amount: sql<number>`COALESCE(SUM(${deposits.amount}), 0)`,
+      })
+        .from(deposits)
+        .where(and(
+          eq(deposits.userId, userId),
+          eq(deposits.status, "approved"),
+        ));
+      const currentVipLevel = calculateVipLevels(Number(approvedDepositSummary?.amount ?? 0)).currentLevel;
+      const rewardAmount = getDailyCheckinRewardForVip(currentVipLevel);
       const streakDays = calculateDailyCheckinStreakAfterClaim(claimDates, today);
       const totalCapturedProfit = claims.reduce(
         (sum, claim) => sum + (Number(claim.amount) || 0),
-        DAILY_CHECKIN_REWARD,
+        rewardAmount,
       );
       const credited = await this.adjustBalance(
         userId,
         "withdrawal",
-        DAILY_CHECKIN_REWARD,
+        rewardAmount,
         tx,
       );
       if (!credited) throw new Error("Impossible de créditer le bonus de connexion.");
@@ -591,15 +605,15 @@ export class DatabaseStorage implements IStorage {
       await tx.insert(transactions).values({
         userId,
         type: DAILY_CHECKIN_TRANSACTION_TYPE,
-        amount: String(DAILY_CHECKIN_REWARD),
+        amount: String(rewardAmount),
         description: "Bonus de connexion quotidien",
         createdAt: now,
       });
 
       return {
         status: "claimed",
-        amount: DAILY_CHECKIN_REWARD,
-        withdrawalBalance: Number(member.withdrawalBalance) + DAILY_CHECKIN_REWARD,
+        amount: rewardAmount,
+        withdrawalBalance: Number(member.withdrawalBalance) + rewardAmount,
         streakDays,
         totalCapturedProfit,
         nextClaimAt: new Date(now.getTime() + DAILY_CHECKIN_COOLDOWN_MS).toISOString(),
