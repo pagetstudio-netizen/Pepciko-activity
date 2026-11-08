@@ -1,0 +1,257 @@
+.rewards-reference,
+.rewards-reference *,
+.rewards-reference *::before,
+.rewards-reference *::after {
+  box-sizing: border-box;
+}
+
+.rewards-reference {
+  min-height: 100dvh;
+  width: 100%;
+  overflow-x: clip;
+  background: #f4f4f5;
+  color: #25252a;
+  font-family: Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.rewards-reference__screen {
+  position: relative;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 512px;
+  margin: 0 auto;
+  background: #f4f4f5;
+}
+
+.rewards-reference__header {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  height: 80px;
+  grid-template-columns: 48px 1fr 48px;
+  align-items: center;
+  padding: 10px 20px 0;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(34, 34, 39, 0.035);
+}
+
+.rewards-reference__header h1 {
+  margin: 0;
+  color: #242429;
+  font-family: Arial, sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.65px;
+  line-height: 1;
+  text-align: center;
+}
+
+.rewards-reference__back {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: transparent;
+  color: #27272c;
+  cursor: pointer;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.rewards-reference__back:hover {
+  background: #f2f1f3;
+}
+
+.rewards-reference__back:active {
+  transform: scale(0.94);
+}
+
+.rewards-reference__back svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2.2;
+}
+
+.rewards-reference__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 18px 0;
+  text-align: center;
+}
+
+.rewards-reference__artwork {
+  display: block;
+  width: min(244px, 70vw);
+  height: 234px;
+  margin: 0 auto 17px;
+  object-fit: fill;
+}
+
+.rewards-reference__total {
+  margin: 0;
+  color: #b29836;
+  font-size: 30px;
+  font-weight: 750;
+  letter-spacing: -0.8px;
+  line-height: 1.2;
+}
+
+.rewards-reference__total span {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0;
+  vertical-align: 4px;
+}
+
+.rewards-reference__caption {
+  margin: 13px 0 0;
+  color: #55555a;
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: -0.15px;
+  line-height: 1.4;
+}
+
+.rewards-reference__quick-actions {
+  position: fixed;
+  z-index: 5;
+  top: 40%;
+  right: max(0px, calc((100vw - 512px) / 2));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.rewards-reference__quick-button {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: #eb1d56;
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(89, 45, 61, 0.18);
+  cursor: pointer;
+  transition: transform 160ms ease, background-color 160ms ease;
+}
+
+.rewards-reference__quick-button:hover {
+  background: #d9164b;
+  transform: translateX(-2px);
+}
+
+.rewards-reference__quick-button:active {
+  transform: scale(0.94);
+}
+
+.rewards-reference__quick-button svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2.1;
+}
+
+.rewards-reference__notice {
+  position: fixed;
+  z-index: 6;
+  top: calc(40% + 58px);
+  right: max(58px, calc((100vw - 512px) / 2 + 58px));
+  display: flex;
+  width: min(260px, calc(100vw - 82px));
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 12px 13px 15px;
+  border: 1px solid #ece9eb;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(40, 36, 38, 0.13);
+  color: #343238;
+  animation: rewards-notice-in 170ms ease-out both;
+}
+
+.rewards-reference__notice strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rewards-reference__notice p {
+  margin: 0;
+  color: #737078;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.rewards-reference__notice button {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #f5f3f4;
+  color: #68646b;
+  cursor: pointer;
+}
+
+.rewards-reference__notice button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.rewards-reference__back:focus-visible,
+.rewards-reference__quick-button:focus-visible,
+.rewards-reference__notice button:focus-visible {
+  outline: 3px solid #b29836;
+  outline-offset: 3px;
+}
+
+@keyframes rewards-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 380px) {
+  .rewards-reference__header {
+    height: 80px;
+  }
+
+  .rewards-reference__header h1 {
+    font-size: 22px;
+  }
+
+  .rewards-reference__content {
+    padding-top: 4px;
+  }
+
+  .rewards-reference__caption {
+    font-size: 16px;
+  }
+
+  .rewards-reference__artwork {
+    height: min(234px, 58vw);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rewards-reference__back,
+  .rewards-reference__quick-button,
+  .rewards-reference__notice {
+    animation: none;
+    transition: none;
+  }
+}

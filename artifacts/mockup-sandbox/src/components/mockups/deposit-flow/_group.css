@@ -1,0 +1,11 @@
+.deposit-preview,
+.deposit-preview * {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}

@@ -1,0 +1,50 @@
+.app-toast-motion {
+  transform-origin: center;
+  will-change: transform, opacity, filter;
+}
+
+.app-toast-motion[data-state="open"] {
+  animation: app-toast-pop-in 420ms cubic-bezier(.16, 1, .3, 1) both;
+}
+
+.app-toast-motion[data-state="closed"] {
+  animation: app-toast-pop-out 200ms cubic-bezier(.4, 0, 1, 1) both;
+}
+
+@keyframes app-toast-pop-in {
+  0% {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translateY(16px) scale(.84);
+  }
+  65% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(-2px) scale(1.025);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes app-toast-pop-out {
+  0% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    filter: blur(2px);
+    transform: translateY(-5px) scale(.94);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-toast-motion[data-state="open"],
+  .app-toast-motion[data-state="closed"] {
+    animation-duration: 1ms;
+  }
+}

@@ -1,0 +1,392 @@
+.team-page {
+  --team-red: #ed245d;
+  --team-pink: #f4879d;
+  --team-gold: #f3c44b;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  background: linear-gradient(112deg, var(--team-red) 0%, #f05b7f 48%, var(--team-pink) 100%);
+  color: #343434;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.team-page *,
+.team-page *::before,
+.team-page *::after {
+  box-sizing: border-box;
+}
+
+.team-page-shell {
+  width: 100%;
+  max-width: 512px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding-bottom: 20px;
+}
+
+.team-header {
+  position: relative;
+  display: flex;
+  height: 74px;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.team-header h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.team-header button {
+  position: absolute;
+  top: 0;
+  left: 18px;
+  display: flex;
+  width: 38px;
+  height: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+.team-header button svg {
+  width: 27px;
+  height: 27px;
+  stroke-width: 2.8;
+}
+
+.team-header button:focus-visible,
+.team-level-details:focus-visible,
+.team-referral-actions button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+.team-commission-card,
+.team-referral-card,
+.team-summary-card {
+  position: relative;
+  width: calc(100% - 32px);
+  margin-right: auto;
+  margin-left: auto;
+  overflow: hidden;
+  border: 1.5px solid var(--team-gold);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 4px 0 rgb(107 47 44 / 20%);
+}
+
+.team-commission-card {
+  display: flex;
+  height: 105px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 8px 14px;
+}
+
+.team-commission-card::after {
+  position: absolute;
+  inset: 0 0 0 58%;
+  background:
+    radial-gradient(circle at 23% 28%, rgb(242 199 83 / 24%) 0 6px, transparent 7px),
+    radial-gradient(circle at 61% 38%, rgb(242 199 83 / 24%) 0 8px, transparent 9px),
+    radial-gradient(circle at 42% 77%, rgb(242 199 83 / 20%) 0 7px, transparent 8px),
+    radial-gradient(circle at 83% 72%, rgb(242 199 83 / 22%) 0 9px, transparent 10px);
+  content: "";
+  pointer-events: none;
+}
+
+.team-commission-card > img {
+  z-index: 1;
+  width: 95px;
+  height: 88px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.team-commission-copy {
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  margin-left: 14px;
+}
+
+.team-commission-copy > span {
+  color: #686868;
+  font-size: 14px;
+  line-height: 1.15;
+}
+
+.team-commission-copy strong {
+  color: #242424;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.team-commission-copy small {
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.team-referral-card {
+  display: flex;
+  height: 109px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding: 12px 10px 12px 11px;
+}
+
+.team-referral-copy {
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.team-referral-copy p {
+  max-width: 100%;
+  margin: 0;
+  color: #454545;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.team-referral-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.team-referral-link {
+  min-width: 0;
+  overflow: hidden;
+  color: #50784e;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-referral-actions button {
+  min-width: 58px;
+  height: 27px;
+  flex: 0 0 auto;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 18px;
+  background: #69b95b;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  transition: filter 140ms ease, transform 140ms ease;
+}
+
+.team-referral-actions button:active,
+.team-level-details:active {
+  transform: scale(.97);
+  filter: brightness(.94);
+}
+
+.team-referral-card > img {
+  z-index: 0;
+  width: 82px;
+  height: 82px;
+  flex: 0 0 auto;
+  margin-left: 4px;
+  object-fit: contain;
+}
+
+.team-summary-card {
+  display: grid;
+  height: 80px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  margin-top: 17px;
+  padding: 8px 5px;
+}
+
+.team-summary-card > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.team-summary-card span {
+  color: #6b6b6b;
+  font-size: 13px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.team-summary-card strong {
+  overflow: hidden;
+  max-width: 100%;
+  color: #262626;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-level-grid {
+  display: grid;
+  width: calc(100% - 16px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin: 17px auto 0;
+}
+
+.team-level-card {
+  display: flex;
+  min-width: 0;
+  min-height: 315px;
+  flex-direction: column;
+  align-items: center;
+  padding: 9px 5px 10px;
+  border: 1.5px solid var(--team-gold);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 3px 3px 0 rgb(107 47 44 / 16%);
+  text-align: center;
+}
+
+.team-level-medal {
+  display: block;
+  width: 62px;
+  height: 66px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.team-level-label,
+.team-level-commission span,
+.team-level-revenue span {
+  color: #484848;
+  font-size: 12px;
+  line-height: 1.22;
+}
+
+.team-level-count,
+.team-level-commission strong,
+.team-level-revenue strong {
+  color: #242424;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.team-level-count {
+  margin-top: 7px;
+}
+
+.team-level-commission,
+.team-level-revenue {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  margin-top: 25px;
+}
+
+.team-level-commission span {
+  max-width: 110px;
+}
+
+.team-level-revenue {
+  margin-top: 16px;
+}
+
+.team-level-details {
+  width: min(100%, 78px);
+  height: 31px;
+  margin-top: auto;
+  border: 0;
+  border-radius: 18px;
+  background: #ed245d;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  transition: filter 140ms ease, transform 140ms ease;
+}
+
+.team-page-error {
+  margin: 14px 18px 0;
+  color: #fff;
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 360px) {
+  .team-commission-card > img {
+    width: 86px;
+  }
+
+  .team-commission-copy {
+    margin-left: 10px;
+  }
+
+  .team-commission-copy strong {
+    font-size: 23px;
+  }
+
+  .team-referral-card > img {
+    width: 70px;
+  }
+
+  .team-commission-card {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .team-summary-card span {
+    font-size: 11px;
+  }
+
+  .team-level-grid {
+    width: calc(100% - 14px);
+    gap: 4px;
+  }
+
+  .team-level-card {
+    padding-right: 3px;
+    padding-left: 3px;
+  }
+
+  .team-level-label,
+  .team-level-commission span,
+  .team-level-revenue span {
+    font-size: 10px;
+  }
+
+  .team-level-count,
+  .team-level-commission strong,
+  .team-level-revenue strong {
+    font-size: 15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .team-referral-actions button,
+  .team-level-details {
+    transition: none;
+  }
+}

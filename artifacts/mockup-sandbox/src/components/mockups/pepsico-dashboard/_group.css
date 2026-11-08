@@ -1,0 +1,22 @@
+.pepsico-preview,
+.pepsico-preview * {
+  box-sizing: border-box;
+}
+
+.pepsico-preview {
+  --pepsi-pink: #ed2a5b;
+  --pepsi-hot: #ec2054;
+  --pepsi-card: #f9d5d3;
+  --pepsi-ink: #242023;
+  --pepsi-muted: #595255;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: linear-gradient(110deg, #ed2a5b 0%, #f15f80 100%);
+  color: var(--pepsi-ink);
+  font-family: Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pepsico-preview button {
+  font: inherit;
+}

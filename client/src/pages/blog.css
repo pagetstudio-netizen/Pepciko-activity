@@ -1,0 +1,644 @@
+.pepsi-blog-page,
+.pepsi-composer-page {
+  --blog-rose: #ec2860;
+  --blog-rose-dark: #db1e55;
+  --blog-teal: #21b6a6;
+  --blog-ink: #29282d;
+  --blog-muted: #929196;
+  --blog-paper: #f7f7f8;
+  width: 100%;
+  max-width: 512px;
+  height: 100dvh;
+  min-height: 100svh;
+  margin: 0 auto;
+  overflow: hidden;
+  color: var(--blog-ink);
+  background: var(--blog-paper);
+  font-family: "DM Sans", "Noto Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.pepsi-blog-page *,
+.pepsi-composer-page * {
+  box-sizing: border-box;
+}
+
+.pepsi-blog-scroll {
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
+  scrollbar-width: none;
+}
+
+.pepsi-blog-scroll::-webkit-scrollbar { display: none; }
+
+.pepsi-blog-hero {
+  position: relative;
+  height: 240px;
+  min-height: 240px;
+  padding: 42px 20px 0;
+  color: #fff;
+  background: linear-gradient(115deg, #ee2860 0%, #ed6687 57%, #f0a7b4 100%);
+}
+
+.pepsi-blog-topline {
+  display: flex;
+  height: 39px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pepsi-blog-back,
+.pepsi-blog-refresh,
+.pepsi-composer-back {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pepsi-blog-back { color: #fff; }
+.pepsi-blog-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #fff;
+}
+
+.pepsi-blog-hero h1 {
+  margin: 0 0 29px;
+  color: #fff;
+  font-size: 21px;
+  font-weight: 500;
+  letter-spacing: -.5px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.pepsi-blog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6vw;
+}
+
+.pepsi-blog-action {
+  display: flex;
+  min-width: 0;
+  min-height: 52px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid rgba(223, 167, 171, .9);
+  border-radius: 999px;
+  color: var(--blog-ink);
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 4px 12px rgba(148, 28, 63, .08);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 160ms ease, background-color 160ms ease;
+}
+
+.pepsi-blog-action:active { transform: scale(.98); }
+.pepsi-blog-action > img {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 50%;
+  object-fit: contain;
+}
+
+.pepsi-blog-action > span {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pepsi-blog-action strong {
+  color: #29282d;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 17px;
+}
+
+.pepsi-blog-action small {
+  color: #77767b;
+  font-size: 10px;
+  line-height: 13px;
+}
+
+.pepsi-blog-feed {
+  position: relative;
+  min-height: calc(100% - 175px);
+  margin: -65px 0 0;
+  padding: 0 20px 30px;
+  background: transparent;
+}
+
+.pepsi-blog-feed-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 1px 18px;
+}
+
+.pepsi-blog-eyebrow {
+  color: #b2afb5;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.35px;
+}
+
+.pepsi-blog-feed-heading h2 {
+  margin: 4px 0 0;
+  color: #343239;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -.35px;
+}
+
+.pepsi-blog-refresh {
+  width: 35px;
+  height: 35px;
+  border: 1px solid #eceaee;
+  border-radius: 50%;
+  color: #817d84;
+  background: #fff;
+}
+
+.pepsi-refreshing { animation: pepsi-rotate .8s linear infinite; }
+@keyframes pepsi-rotate { to { transform: rotate(360deg); } }
+
+.pepsi-post-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.pepsi-post {
+  padding: 18px 18px 20px;
+  border: 1px solid #f0eef1;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(48, 38, 48, .035);
+  animation: pepsi-rise .35s ease both;
+}
+
+.pepsi-post-author-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.pepsi-post-avatar {
+  width: 43px;
+  height: 43px;
+  flex: 0 0 43px;
+  border: 2px solid #f5ebd5;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.pepsi-post-author {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pepsi-post-author strong {
+  overflow: hidden;
+  color: #38363d;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+}
+
+.pepsi-post-author time {
+  color: #aaa7ad;
+  font-size: 11px;
+}
+
+.pepsi-post-check { color: #23b6a7; }
+
+.pepsi-post-content {
+  margin: 18px 0 0;
+  color: #56535a;
+  font-size: 15px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.pepsi-post-reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: #d89620;
+  background: #fff7e7;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pepsi-post-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.pepsi-post-image-button {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: #f5f4f5;
+  cursor: zoom-in;
+}
+
+.pepsi-post-images img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  border-radius: 11px;
+  background: #f5f4f5;
+  object-fit: contain;
+}
+
+.pepsi-blog-state {
+  display: flex;
+  min-height: 245px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 25px;
+  border: 1px solid #f0eef1;
+  border-radius: 18px;
+  color: #77747b;
+  background: #fff;
+  text-align: center;
+}
+
+.pepsi-empty-mark {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border-radius: 18px;
+  color: var(--blog-rose);
+  background: #fff0f4;
+}
+
+.pepsi-blog-empty h3 {
+  margin: 15px 0 5px;
+  color: #35333a;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.pepsi-blog-empty p {
+  max-width: 280px;
+  margin: 0;
+  color: #8c8990;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.pepsi-blog-empty button,
+.pepsi-blog-error button {
+  min-height: 39px;
+  margin-top: 17px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 24px;
+  color: #fff;
+  background: var(--blog-rose);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pepsi-blog-error { min-height: 180px; }
+.pepsi-blog-loading { display: flex; flex-direction: column; gap: 14px; }
+.pepsi-post-skeleton {
+  display: flex;
+  height: 150px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid #f0eef1;
+  border-radius: 18px;
+  background: linear-gradient(100deg, #fff 25%, #f2f0f2 45%, #fff 65%);
+  background-size: 220% 100%;
+  animation: pepsi-shimmer 1.4s ease-in-out infinite;
+}
+.pepsi-post-skeleton i {
+  width: 52%;
+  height: 17px;
+  margin: 4px 0 9px;
+  border-radius: 10px;
+  background: #edeaee;
+}
+.pepsi-post-skeleton span { width: 95%; height: 10px; border-radius: 6px; background: #f0edf1; }
+.pepsi-post-skeleton span:last-child { width: 67%; }
+@keyframes pepsi-shimmer { to { background-position: -220% 0; } }
+@keyframes pepsi-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.pepsi-rules-overlay {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(28, 20, 23, .52);
+  touch-action: none;
+  animation: pepsi-fade .18s ease both;
+}
+
+.pepsi-rules-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 512px;
+  height: min(470px, 70dvh);
+  min-height: min(420px, 65dvh);
+  padding: 20px 24px calc(18px + env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+  border-radius: 22px 22px 0 0;
+  background: #fff;
+  text-align: center;
+  box-shadow: 0 -12px 38px rgba(27, 17, 22, .14);
+}
+
+.pepsi-rules-art {
+  display: block;
+  width: 160px;
+  height: 160px;
+  margin: 0 auto 4px;
+  object-fit: cover;
+}
+
+.pepsi-rules-sheet h2 {
+  max-width: 430px;
+  margin: 0 auto;
+  color: #302e35;
+  font-size: 22px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.pepsi-rules-copy {
+  margin-top: 10px;
+  color: #58565d;
+  font-size: 15px;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.pepsi-rules-copy p { margin: 0; }
+.pepsi-rules-understood {
+  position: absolute;
+  left: 50%;
+  bottom: calc(45px + env(safe-area-inset-bottom, 0px));
+  width: min(268px, calc(100% - 48px));
+  height: 42px;
+  transform: translateX(-50%);
+  border: 0;
+  border-radius: 30px;
+  color: #fff;
+  background: var(--blog-teal);
+  box-shadow: 0 8px 19px rgba(33, 182, 166, .2);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+@keyframes pepsi-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.pepsi-composer-page {
+  position: relative;
+  color: #29282d;
+  background: #fff;
+}
+
+.pepsi-composer-header {
+  position: relative;
+  display: flex;
+  height: 74px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 55px;
+}
+
+.pepsi-composer-header h1 {
+  margin: 0;
+  color: #252428;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pepsi-composer-back {
+  position: absolute;
+  left: 16px;
+  color: #161519;
+}
+
+.pepsi-composer-body {
+  height: calc(100% - 74px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 52px 40px 120px;
+}
+
+.pepsi-composer-label {
+  display: block;
+  height: 0;
+  overflow: hidden;
+  font-size: 1px;
+}
+
+.pepsi-composer-textarea {
+  display: block;
+  width: 100%;
+  height: 284px;
+  resize: none;
+  padding: 11px 13px;
+  border: 1.5px solid #49bca4;
+  border-radius: 12px;
+  outline: none;
+  color: #37353b;
+  background: #f7f7f7;
+  box-shadow: 0 1px 6px rgba(29, 176, 151, .15);
+  font: inherit;
+  font-size: 17px;
+  line-height: 1.55;
+  transition: box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.pepsi-composer-textarea:focus {
+  border-color: #28ad94;
+  box-shadow: 0 0 0 3px rgba(39, 180, 151, .13);
+}
+
+.pepsi-composer-textarea::placeholder { color: #c5c4c6; opacity: 1; }
+
+.pepsi-composer-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 7px 1px 0;
+  color: #a4a1a7;
+  font-size: 10px;
+}
+
+.pepsi-composer-photo {
+  position: relative;
+  display: flex;
+  width: 132px;
+  height: 132px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  color: #36b6a5;
+  background: #f5f5f5;
+  cursor: pointer;
+}
+
+.pepsi-composer-photo:disabled { cursor: not-allowed; opacity: .65; }
+.pepsi-composer-photo-count {
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+  color: #8c8990;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pepsi-composer-photos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 37px;
+}
+
+.pepsi-composer-photo-input { display: none; }
+
+.pepsi-composer-photo-preview {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #f5f5f5;
+}
+
+.pepsi-composer-photo-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pepsi-composer-photo-remove {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(35, 33, 37, .75);
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pepsi-composer-photo-remove:disabled { cursor: not-allowed; opacity: .65; }
+
+.pepsi-composer-photo-note {
+  margin: 7px 0 0;
+  color: #9a979e;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.pepsi-publish-bar {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+  background: rgba(255, 255, 255, .97);
+  box-shadow: 0 -7px 20px rgba(26, 22, 28, .06);
+}
+
+.pepsi-publish-button {
+  display: flex;
+  width: 100%;
+  height: 57px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 99px;
+  color: #fff;
+  background: var(--blog-rose);
+  box-shadow: 0 8px 15px rgba(236, 40, 96, .12);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.pepsi-publish-button:active:not(:disabled) { transform: scale(.99); }
+.pepsi-publish-button:disabled { cursor: not-allowed; opacity: .62; }
+.pepsi-loading-icon { animation: pepsi-rotate .8s linear infinite; }
+
+@media (max-width: 380px) {
+  .pepsi-blog-hero { padding-right: 15px; padding-left: 15px; }
+  .pepsi-blog-action { gap: 6px; padding-right: 8px; padding-left: 8px; }
+  .pepsi-blog-action > img { width: 37px; height: 37px; flex-basis: 37px; }
+  .pepsi-blog-action strong { font-size: 13px; }
+  .pepsi-blog-action small { font-size: 10px; }
+  .pepsi-composer-body { padding-right: 24px; padding-left: 24px; }
+  .pepsi-composer-textarea { height: min(284px, 36dvh); }
+  .pepsi-composer-photo { width: 120px; height: 120px; }
+  .pepsi-composer-photo-preview { width: 84px; height: 84px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pepsi-blog-page *,
+  .pepsi-composer-page * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

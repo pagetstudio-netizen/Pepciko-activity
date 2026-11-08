@@ -1,0 +1,41 @@
+- [WestPay Integration](westpay-integration.md) — Redirect-based deposit flow + HMAC webhook; per-country API keys for withdrawals; secrets only (never in code/DB).
+- [SendavaPay integration](sendavapay-integration.md) — Payin deposit flow: backend creates+initiates, user phone auto-used, OTP/redirect handled, webhook HMAC verified.
+- [Imported database setup](imported-database-setup.md) — Preserve an existing Replit session table when applying a first-run Drizzle schema.
+- [Database hosting choice](database-hosting-choice.md) — User authorized fresh Replit development data for this import; preserve Supabase and production separately.
+- [Plesk GitHub deployment](plesk-github-deployment.md) — Plesk pulls a committed dist build and starts dist/index.cjs relative to the application root.
+- [Login privacy](login-privacy.md) — Do not persist passwords or phone numbers in browser storage; privacy scans classify remembered phone numbers as sensitive.
+- [Brand theme isolation](brand-theme-isolation.md) — Use the user's PepsiCo identity and preserve RobotPay’s separate theme.
+- [Dashboard language and catalog](dashboard-language-and-catalog.md) — French/FCFA, real catalog, protected Blog publishing, and unchanged browser chrome.
+- [Home dashboard card sizing](home-dashboard-card-sizing.md) — Shorten content cards only; preserve quick-action buttons/icons and the page header.
+- [Support center design](support-center-design.md) — Keep the help center and deposit-report form aligned with the user’s supplied pink screenshots.
+- [Account card proportions](account-card-dimensions.md) — Preserve the account cards’ original width; shorten VIP, business, and services cards vertically.
+- [Robot product artwork](robot-product-art.md) — Keep PepsiCo/Poppi for stable/activity; use Mirinda by default for Bien-être and allow Admin overrides.
+- [Empty-state illustration](empty-state-illustration.md) — Use the user's uploaded illustration for genuine empty results across user, Admin, Banker, and RobotPay views; leave loading, errors, and payment progress unchanged.
+- [InPay callback classification](inpay-callbacks.md) — InPay payin and payout callbacks can both include order_number; classify using the merchant reference prefix first.
+- [InPay IP whitelist](inpay-ip-whitelist.md) — InPay rejects API calls with errno 5 until the server's public egress IP is whitelisted.
+- [AshtechPay integration](ashtechpay-burkina.md) — Use the AshTech profile ID bound to the Bearer key, not the app customer's ID.
+- [PPayPros live validation](ppaypros-live-validation.md) — Keep payin/payout disabled until the XOF amount scale and mobile-wallet payout compatibility are verified with the merchant.
+- [Toast appearance](toast-notifications.md) — Use the same compact, centered charcoal toast on every route; copy and authentication feedback share it, including RobotPay.
+- [Floating shortcut icons](floating-quick-action-icons.md) — Their glyphs are transparent cutouts; use a contrasting button background so they stay visible.
+- [Transaction history rules](transaction-history-rules.md) — User histories omit provider names; deposits show no fees; admins search by the shared `deqmsll` order number.
+- [DrimPay integration](drimpay-integration.md) — Keep credentials in server Secrets, activate per country, and retain guarded, idempotent payment reconciliation.
+- [Gift-code redemption feedback](gift-code-redemption.md) — After a confirmed claim, show chest feedback immediately; refresh the account balance in the background.
+- [Mobile screenshot scale](mobile-screenshot-scale.md) — Derive CSS viewport dimensions from original phone captures; chat thumbnails are not CSS pixels.
+- [Responsive clip paths](responsive-clip-paths.md) — CSS `path()` in Chromium rejects percentage coordinates; use an object-bounding-box SVG clip for responsive curves.
+- [Screenshot artwork extraction](screenshot-artwork-extraction.md) — Crop distinctive artwork from original captures, isolate its silhouette, and animate surrounding layers separately.
+- [Fortune wheel artwork](fortune-wheel-artwork.md) — Use the real wheel artwork from the user’s reference instead of CSS-drawn coin or GO graphics.
+- [Fortune wheel turns](fortune-wheel-spins.md) — Preserve server-side eligibility and payout rules; use the original screenshot’s wording on the game page.
+- [Withdrawal account editing](withdrawal-account-editing.md) — Each user has one editable primary withdrawal account; keep operators sourced from Admin-configured countries.
+- [Activity product launch clocks](activity-product-launch-clocks.md) — TG, BF, and CI share local time; BJ, CM, and NE launch one hour ahead.
+- [Activity product purchase rules](activity-product-purchase-rules.md) — Require a paid stable purchase and cap activity price at the highest single stable purchase; enforce stock and launch limits.
+- [Product naming rules](activity-product-names.md) — Stable, activity, and Bien-être products use independent canonical name sequences.
+- [Bien-être product rules](wellness-products.md) — Keep offers as database records; Admin sets any positive cycle and only one active offer is allowed per user.
+- [Withdrawal product eligibility](withdrawal-product-eligibility.md) — Withdrawals require at least one active stable position; activity-only and completed positions do not qualify.
+- [Revoked product visibility](revoked-product-visibility.md) — Hide admin-revoked positions from user lists while retaining their record and distinguishing them from completed products.
+- [Referral commission eligibility](referral-commission-policy.md) — Pay referral commissions only on the referred user's first paid stable-product purchase.
+- [Product payout policy](product-payout-policy.md) — Product earnings are credited once at maturity; preserve and subtract any amounts already paid on legacy positions.
+- [Balance separation](balance-separation.md) — Keep non-withdrawable deposits and bonuses separate from withdrawable earnings and commissions.
+- [Daily check-in bonus](daily-checkin-bonus.md) — Award fixed 45 FCFA every 24 hours only with an active stable product; missed days reset the streak, not credited funds.
+- [Authentication viewport](authentication-viewport.md) — Keep login and registration fixed without page scrolling; use the supplied phone, lock, and account field icons.
+- [Signup CAPTCHA and withdrawal password](auth-captcha-transaction-password.md) — Use an in-app CAPTCHA, not SMS OTP; require a separate withdrawal password for withdrawals.
+- [VIP level rules](vip-level-policy.md) — Base VIP on approved cumulative deposits; preserve the user-confirmed thresholds and fixed INR-to-FCFA conversion.

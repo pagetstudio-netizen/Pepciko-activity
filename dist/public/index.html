@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="fr" translate="no" class="notranslate">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="google" content="notranslate" />
+    <meta name="theme-color" content="#0B1733" />
+    <meta name="description" content="Consultez les produits, les opérations et les informations de votre compte PepsiCo." />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Accueil | PepsiCo" />
+    <meta property="og:description" content="Consultez les produits, les opérations et les informations de votre compte PepsiCo." />
+    <meta property="og:image" content="/pepsico-logo.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="640" />
+    <meta property="og:image:height" content="640" />
+    <meta property="og:site_name" content="PepsiCo" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Accueil | PepsiCo" />
+    <meta name="twitter:description" content="Consultez les produits, les opérations et les informations de votre compte PepsiCo." />
+    <meta name="twitter:image" content="/pepsico-logo.jpg" />
+    
+    <link rel="icon" type="image/png" sizes="192x192" href="/pepsico-icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/pepsico-icon-512.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <script>
+      // Capture install prompt as early as possible before React mounts
+      window._installPrompt = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window._installPrompt = e;
+      });
+      window.addEventListener('appinstalled', function() {
+        window._appInstalled = true;
+      });
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js');
+        });
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <title>Accueil | PepsiCo</title>
+    <script type="module" crossorigin src="/assets/index-B1QbORun.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B47edA5w.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

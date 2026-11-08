@@ -1,0 +1,185 @@
+import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { FALLBACK_COUNTRIES, type ApiCountry } from "@/lib/countries";
+import { AuthPageShell } from "@/components/auth-page-shell";
+import { CountrySelector } from "@/components/country-selector";
+import { ChevronRight, Eye, EyeOff, Loader2 } from "lucide-react";
+import phoneFieldIcon from "@assets/login01_1791498369080.png";
+import passwordFieldIcon from "@assets/login02_1791498369057.png";
+
+const loginSchema = z.object({
+  phone: z.string().min(8, "Numéro de téléphone invalide"),
+  country: z.string().min(2, "Sélectionnez un pays"),
+  password: z.string().min(1, "Le mot de passe est requis"),
+});
+
+type LoginForm = z.infer<typeof loginSchema>;
+
+export default function LoginPage() {
+  const [, navigate] = useLocation();
+  const { login } = useAuth();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+  const [countryModalOpen, setCountryModalOpen] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
+
+  const form = useForm<LoginForm>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      phone: "",
+      country: "TG",
+      password: "",
+    },
+  });
+
+  const { data: apiCountries, isLoading: countriesLoading } = useQuery<ApiCountry[]>({
+    queryKey: ["/api/countries"],
+  });
+
+  const [selectedCountry, setSelectedCountry] = useState("TG");
+
+  useEffect(() => {
+    // Remove credentials persisted by versions that stored login data locally.
+    localStorage.removeItem("doosan_credentials");
+    localStorage.removeItem("doosan_login_preferences");
+  }, []);
+
+  useEffect(() => {
+    if (!apiCountries || apiCountries.length === 0) return;
+    const isValid = apiCountries.some(
+      ac => ac.code.toUpperCase() === selectedCountry.toUpperCase() && ac.isActive,
+    );
+    // Keep a remembered/selected country long enough for the server to apply
+    // the administrator-only cross-country login rule.
+    if (!isValid) {
+      const first = apiCountries.find(ac => ac.isActive);
+      if (first) {
+        setSelectedCountry(first.code);
+        form.setValue("country", first.code);
+      }
+    }
+  }, [apiCountries, selectedCountry, form]);
+
+  const countryData = (() => {
+    if (apiCountries && apiCountries.length > 0) {
+      const c = apiCountries.find(
+        ac => ac.code.toUpperCase() === selectedCountry.toUpperCase() && ac.isActive,
+      );
+      if (c) return { phonePrefix: c.phonePrefix, name: c.name };
+      return null;
+    }
+    const f = FALLBACK_COUNTRIES.find(fc => fc.code === selectedCountry);
+    return f ? { phonePrefix: f.phonePrefix, name: f.name } : null;
+  })();
+
+  async function onSubmit(data: LoginForm) {
+    setIsLoading(true);
+    try {
+      await login(data.phone, data.country, data.password);
+      navigate("/");
+    } catch (error: any) {
+      toast({ title: "Erreur de connexion", description: error.message || "Vérifiez vos informations", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const displayedPrefix = countryData?.phonePrefix || (countriesLoading ? "..." : "");
+
+  return (
+    <AuthPageShell mode="login">
+      <form className="auth-login-form" onSubmit={form.handleSubmit(onSubmit)}>
+        <input type="hidden" {...form.register("country")} />
+        <div className="auth-fields">
+          <div className="auth-input-group">
+            <label className="auth-field-caption" htmlFor="login-phone">Numéro de téléphone</label>
+            <div className="auth-field auth-phone-field">
+              <img className="auth-phone-icon auth-field-icon" src={phoneFieldIcon} alt="" aria-hidden="true" />
+              <button
+                type="button"
+                className="auth-country-button"
+                onClick={() => setCountryModalOpen(true)}
+                aria-haspopup="dialog"
+                aria-expanded={countryModalOpen}
+                aria-label={`Pays : ${countryData?.name || "non sélectionné"}, indicatif +${displayedPrefix}`}
+                data-testid="button-select-country"
+              >
+                <span className="auth-country-value">
+                  <span className="auth-country-code">+{displayedPrefix}</span>
+                  <ChevronRight aria-hidden="true" />
+                </span>
+              </button>
+              <span className="auth-field-divider" aria-hidden="true" />
+              <input
+                id="login-phone"
+                {...form.register("phone")}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="Numéro de téléphone"
+                aria-label="Numéro de téléphone"
+                aria-invalid={Boolean(form.formState.errors.phone)}
+                data-testid="input-phone"
+              />
+            </div>
+            {form.formState.errors.phone && <p className="auth-error">{form.formState.errors.phone.message}</p>}
+          </div>
+
+          <div className="auth-input-group">
+            <label className="auth-field-caption" htmlFor="login-password">Mot de passe</label>
+            <div className="auth-field auth-password-field">
+              <img className="auth-leading-icon auth-field-icon" src={passwordFieldIcon} alt="" aria-hidden="true" />
+              <input
+                id="login-password"
+                {...form.register("password")}
+                type={passwordVisible ? "text" : "password"}
+                autoComplete="current-password"
+                placeholder="Mot de passe"
+                aria-label="Mot de passe"
+                aria-invalid={Boolean(form.formState.errors.password)}
+                data-testid="input-password"
+              />
+              <button
+                type="button"
+                className="auth-visibility-button"
+                onClick={() => setPasswordVisible((visible) => !visible)}
+                aria-label={passwordVisible ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                aria-pressed={passwordVisible}
+              >
+                {passwordVisible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+              </button>
+            </div>
+            {form.formState.errors.password && <p className="auth-error">{form.formState.errors.password.message}</p>}
+          </div>
+        </div>
+
+        <button type="submit" disabled={isLoading} className="auth-submit" data-testid="button-login">
+          {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Se connecter"}
+        </button>
+        <button
+          type="button"
+          className="auth-switch"
+          onClick={() => navigate("/register")}
+          data-testid="link-register"
+        >
+          Pas encore de compte ? S’inscrire
+        </button>
+      </form>
+      <CountrySelector
+        selectedCountryCode={selectedCountry}
+        open={countryModalOpen}
+        onClose={() => setCountryModalOpen(false)}
+        onSelect={(code) => {
+          setSelectedCountry(code);
+          form.setValue("country", code, { shouldValidate: true });
+        }}
+      />
+    </AuthPageShell>
+  );
+}
