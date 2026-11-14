@@ -1,14 +1,15 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronLeft, MessageCircleMore } from "lucide-react";
+import { ChevronDown, ChevronLeft } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import WithdrawalFloatingTools from "@/components/withdrawal-floating-tools";
+import { loadTawkWidget, openTawkChat } from "@/lib/tawk-to";
 import telegramIcon from "@assets/image_1794149794918.png";
 import supportIcon from "@assets/image_1794149807415.png";
 import rechargeIcon from "@assets/image_1794149820846.png";
 import "./service-screenshot.css";
 
 interface LinksSettings {
-  supportLink?: string;
   supportLabel?: string;
   supportEnabled?: string | boolean;
   channelLink?: string;
@@ -38,10 +39,13 @@ export default function ServicePage() {
   const { data: settings } = useQuery<LinksSettings>({
     queryKey: ["/api/settings/links"],
   });
-  const supportLink = settings?.supportLink || "https://t.me/sybotx";
   const channelLink = settings?.channelLink || "https://t.me/sybotx";
-  const supportEnabled = enabled(settings?.supportEnabled);
+  const supportEnabled = Boolean(settings) && enabled(settings?.supportEnabled);
   const channelEnabled = enabled(settings?.channelEnabled);
+
+  useEffect(() => {
+    if (settings && supportEnabled) loadTawkWidget();
+  }, [settings, supportEnabled]);
 
   return (
     <main className="service-client-page">
@@ -74,18 +78,17 @@ export default function ServicePage() {
               </span>
               <strong>Chaîne Telegram</strong>
             </a>
-            <a
+            <button
+              type="button"
               className={`service-shortcut${!supportEnabled ? " is-disabled" : ""}`}
-              href={supportEnabled ? supportLink : undefined}
-              target={supportEnabled ? "_blank" : undefined}
-              rel={supportEnabled ? "noopener noreferrer" : undefined}
-              aria-disabled={!supportEnabled}
+              onClick={openTawkChat}
+              disabled={!supportEnabled}
             >
               <span className="service-shortcut-icon">
                 <img src={supportIcon} alt="" aria-hidden="true" />
               </span>
               <strong>Assistance en ligne</strong>
-            </a>
+            </button>
           </section>
 
           <Link className="service-report-card" href="/service/deposit-not-received" aria-label="Signaler un dépôt non reçu">
@@ -136,18 +139,6 @@ export default function ServicePage() {
         containerClassName="service-floating-tools"
         buttonClassName="service-floating-button"
       />
-      {supportEnabled && (
-        <a
-          className="service-chat-button"
-          href={supportLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Ouvrir l'assistance en ligne"
-        >
-          <MessageCircleMore aria-hidden="true" />
-          <span>1</span>
-        </a>
-      )}
     </main>
   );
 }

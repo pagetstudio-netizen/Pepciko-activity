@@ -367,43 +367,6 @@
   object-fit: contain;
 }
 
-.service-chat-button {
-  position: fixed;
-  z-index: 46;
-  right: max(calc((100vw - 512px) / 2 + 14px), 14px);
-  bottom: max(42px, env(safe-area-inset-bottom, 0px));
-  display: grid;
-  width: 64px;
-  height: 64px;
-  place-items: center;
-  border-radius: 50%;
-  background: #4168ee;
-  box-shadow: 0 4px 12px rgba(24, 48, 135, .25);
-  color: #fff;
-  text-decoration: none;
-}
-
-.service-chat-button > svg {
-  width: 32px;
-  height: 32px;
-  stroke-width: 2.5;
-}
-
-.service-chat-button > span {
-  position: absolute;
-  top: -2px;
-  right: -1px;
-  display: grid;
-  width: 20px;
-  height: 20px;
-  place-items: center;
-  border: 1px solid #fff;
-  border-radius: 50%;
-  background: #e72327;
-  color: #fff;
-  font-size: 12px;
-}
-
 .service-report-page {
   background: #f3f3f5;
 }
@@ -781,13 +744,6 @@
   .service-floating-button {
     width: 44px;
     height: 44px;
-  }
-
-  .service-chat-button {
-    width: 58px;
-    height: 58px;
-    right: 13px;
-    bottom: 32px;
   }
 
   .service-report-form {

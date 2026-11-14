@@ -3,13 +3,13 @@ import { useLocation } from "wouter";
 import telegramIcon from "@assets/telegram_(6)_1794096566582.png";
 import serviceIcon from "@assets/service_(5)_1794096566673.png";
 import ordersIcon from "@assets/order_(2)_1794096566697.png";
+import { openTawkChat } from "@/lib/tawk-to";
 import { openAdminConfiguredLink } from "@/lib/quick-links";
 import "./withdrawal-floating-tools.css";
 
 interface WithdrawalToolSettings {
   channelLink?: string | null;
   channelEnabled?: boolean | string;
-  supportLink?: string | null;
   supportEnabled?: boolean | string;
 }
 
@@ -29,8 +29,13 @@ export default function WithdrawalFloatingTools({
 
   const openChannel = () =>
     openAdminConfiguredLink(settings?.channelLink, settings?.channelEnabled, () => navigate("/service"));
-  const openSupport = () =>
-    openAdminConfiguredLink(settings?.supportLink, settings?.supportEnabled, () => navigate("/service"));
+  const openSupport = () => {
+    if (!settings || settings.supportEnabled === false || settings.supportEnabled === "false") {
+      navigate("/service");
+      return;
+    }
+    openTawkChat();
+  };
 
   return (
     <aside className={containerClassName} aria-label="Raccourcis">
