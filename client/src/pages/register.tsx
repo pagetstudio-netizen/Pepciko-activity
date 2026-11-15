@@ -39,7 +39,6 @@ export default function RegisterPage() {
   const [countryModalOpen, setCountryModalOpen] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [captchaCountdown, setCaptchaCountdown] = useState<number | null>(null);
-  const [captchaImage, setCaptchaImage] = useState("");
   const [captchaLoading, setCaptchaLoading] = useState(false);
   const [captchaError, setCaptchaError] = useState("");
 
@@ -80,7 +79,7 @@ export default function RegisterPage() {
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.message || "Impossible de générer le code.");
-        setCaptchaImage(result.image);
+        form.setValue("captchaCode", result.code, { shouldValidate: true });
         setCaptchaError("");
       })
       .catch((error: Error) => setCaptchaError(error.message))
@@ -89,7 +88,6 @@ export default function RegisterPage() {
 
   async function startCaptcha() {
     setCaptchaError("");
-    setCaptchaImage("");
     form.setValue("captchaCode", "");
     try {
       const response = await apiRequest("POST", "/api/auth/captcha/start", { scope: "register" });
@@ -271,14 +269,14 @@ export default function RegisterPage() {
 
           <div className="auth-input-group">
             <label className="auth-field-caption" htmlFor="register-captcha">Code de vérification</label>
-            {captchaImage && <img className="auth-captcha-image" src={captchaImage} alt="Code à recopier" />}
             <div className="auth-field auth-verification-field">
               <input
                 id="register-captcha"
                 {...form.register("captchaCode")}
-                placeholder="Saisissez le code"
+                placeholder="Le code généré s’affichera ici"
                 autoComplete="off"
                 autoCapitalize="characters"
+                readOnly
                 aria-label="Code de vérification"
                 aria-invalid={Boolean(form.formState.errors.captchaCode)}
                 data-testid="input-captcha"

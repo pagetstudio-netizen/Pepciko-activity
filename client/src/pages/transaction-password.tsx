@@ -18,7 +18,6 @@ export default function TransactionPasswordPage() {
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [captchaCode, setCaptchaCode] = useState("");
-  const [captchaImage, setCaptchaImage] = useState("");
   const [captchaCountdown, setCaptchaCountdown] = useState<number | null>(null);
   const [captchaLoading, setCaptchaLoading] = useState(false);
   const [captchaError, setCaptchaError] = useState("");
@@ -65,7 +64,7 @@ export default function TransactionPasswordPage() {
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.message || "Impossible de générer le code.");
-        setCaptchaImage(result.image);
+        setCaptchaCode(result.code);
         setCaptchaError("");
       })
       .catch((error: Error) => setCaptchaError(error.message))
@@ -74,7 +73,6 @@ export default function TransactionPasswordPage() {
 
   async function startCaptcha() {
     setCaptchaError("");
-    setCaptchaImage("");
     setCaptchaCode("");
     try {
       const response = await apiRequest("POST", "/api/auth/captcha/start", { scope: "transaction_password" });
@@ -100,7 +98,7 @@ export default function TransactionPasswordPage() {
     if (captchaCode.trim().length !== 6) {
       toast({
         title: "Code manquant",
-        description: "Saisissez les 6 caractères affichés dans l’image.",
+        description: "Générez d’abord le code de vérification.",
         variant: "destructive",
       });
       return;
@@ -134,17 +132,14 @@ export default function TransactionPasswordPage() {
           <form className="transaction-password-form" onSubmit={handleSubmit}>
             <div className="transaction-password-field">
               <label htmlFor="transaction-captcha">Code de vérification</label>
-              {captchaImage && (
-                <img className="transaction-captcha-image" src={captchaImage} alt="Code de vérification à recopier" />
-              )}
               <div className="transaction-password-input-row">
                 <input
                   id="transaction-captcha"
                   value={captchaCode}
-                  onChange={(event) => setCaptchaCode(event.target.value.toUpperCase().slice(0, 6))}
                   autoComplete="off"
                   autoCapitalize="characters"
-                  placeholder="Saisissez le code affiché"
+                  placeholder="Le code généré s’affichera ici"
+                  readOnly
                   aria-invalid={Boolean(captchaError)}
                 />
                 <button

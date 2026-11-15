@@ -33,27 +33,6 @@ export function createAuthCaptcha(scope: AuthCaptchaScope, now = Date.now()) {
   }
 
   const salt = randomBytes(16).toString("hex");
-  const lines = Array.from({ length: 6 }, () => {
-    const x1 = randomInt(8, 188);
-    const x2 = randomInt(8, 188);
-    const y1 = randomInt(8, 66);
-    const y2 = randomInt(8, 66);
-    const opacity = (0.18 + Math.random() * 0.28).toFixed(2);
-    return `<path d="M${x1} ${y1} L${x2} ${y2}" stroke="#52656d" stroke-width="1.2" opacity="${opacity}"/>`;
-  }).join("");
-  const dots = Array.from({ length: 24 }, () => {
-    const cx = randomInt(4, 192);
-    const cy = randomInt(4, 70);
-    return `<circle cx="${cx}" cy="${cy}" r="1.2" fill="#687b82" opacity=".35"/>`;
-  }).join("");
-  const glyphs = code.split("").map((character, index) => {
-    const x = 29 + index * 27;
-    const y = 44 + randomInt(-5, 6);
-    const rotation = randomInt(-16, 17);
-    return `<text x="${x}" y="${y}" transform="rotate(${rotation} ${x} ${y})" fill="#203a49" font-family="Arial,sans-serif" font-size="29" font-weight="700">${character}</text>`;
-  }).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 196 74" role="img" aria-label="Code de vérification"><rect width="196" height="74" rx="9" fill="#f2f2f2"/>${lines}${dots}${glyphs}</svg>`;
-
   return {
     challenge: {
       scope,
@@ -62,7 +41,7 @@ export function createAuthCaptcha(scope: AuthCaptchaScope, now = Date.now()) {
       expiresAt: now + CAPTCHA_LIFETIME_MS,
       attempts: 0,
     } satisfies AuthCaptchaChallenge,
-    image: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
+    code,
   };
 }
 

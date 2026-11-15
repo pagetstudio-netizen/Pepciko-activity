@@ -8,16 +8,12 @@ import {
   verifyAuthCaptcha,
 } from "./auth-captcha";
 
-function readCodeFromImage(image: string) {
-  const svg = Buffer.from(image.split(",")[1], "base64").toString("utf8");
-  return Array.from(svg.matchAll(/<text\b[^>]*>([A-Z2-9])<\/text>/g), (match) => match[1]).join("");
-}
-
-test("captcha generation waits five seconds and exposes a six-character visual challenge", () => {
+test("captcha generation waits five seconds and exposes the six-character code", () => {
   const created = createAuthCaptcha("register", 1_000);
-  const code = readCodeFromImage(created.image);
+  const code = created.code;
 
   assert.equal(CAPTCHA_DELAY_SECONDS, 5);
+  assert.match(code, /^[A-HJ-NP-Z2-9]{6}$/);
   assert.equal(code.length, 6);
   assert.equal(created.challenge.scope, "register");
   assert.equal(created.challenge.expiresAt, 1_000 + CAPTCHA_LIFETIME_MS);

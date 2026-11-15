@@ -33,7 +33,7 @@ function applyWidgetVisibility(api: TawkApi) {
 }
 
 function registerTawkHandlers(api: TawkApi) {
-  if (!loadHandlerRegistered) {
+  if (!loadHandlerRegistered && typeof api.maximize !== "function") {
     const previousOnLoad = api.onLoad;
     api.onLoad = () => {
       previousOnLoad?.();

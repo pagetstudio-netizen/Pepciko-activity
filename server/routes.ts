@@ -884,7 +884,7 @@ export async function registerRoutes(
     sessionData.authCaptchas![scope] = { readyAt: null, challenge: generated.challenge };
     res.setHeader("Cache-Control", "no-store");
     return res.json({
-      image: generated.image,
+      code: generated.code,
       expiresInSeconds: Math.floor(CAPTCHA_LIFETIME_MS / 1000),
     });
   });
