@@ -10,6 +10,7 @@ import BottomNav from "@/components/bottom-nav";
 import HomeWelcomePopup from "@/components/home-welcome-popup";
 import { ADMIN_PATH } from "@/lib/admin-path";
 import { applyPageMetadata } from "@/lib/page-metadata";
+import { setTawkWidgetVisible } from "@/lib/tawk-to";
 
 const LoginPage = lazy(() => import("@/pages/login"));
 const RegisterPage = lazy(() => import("@/pages/register"));
@@ -194,6 +195,7 @@ function AppNavigationShell() {
   const [location] = useLocation();
   useEffect(() => {
     applyPageMetadata(location);
+    setTawkWidgetVisible(location === "/service");
   }, [location]);
 
   const publicPaths = ["/login", "/register", "/invitation", "/rejoindre", "/tg/pages/login/reset"];

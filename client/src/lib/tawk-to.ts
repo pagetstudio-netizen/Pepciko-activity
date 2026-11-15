@@ -3,7 +3,11 @@ const TAWK_SCRIPT_URL = "https://embed.tawk.to/6af83ac6f2b1b13c471c2aea/1k7cqb6u
 
 interface TawkApi {
   maximize?: () => void;
+  minimize?: () => void;
+  showWidget?: () => void;
+  hideWidget?: () => void;
   onLoad?: () => void;
+  onChatMinimized?: () => void;
 }
 
 declare global {
@@ -15,12 +19,60 @@ declare global {
 
 let pendingOpen = false;
 let loadHandlerRegistered = false;
+let minimizeHandlerRegistered = false;
+let shouldShowWidget = false;
+
+function applyWidgetVisibility(api: TawkApi) {
+  if (shouldShowWidget) {
+    api.showWidget?.();
+    return;
+  }
+
+  api.minimize?.();
+  api.hideWidget?.();
+}
+
+function registerTawkHandlers(api: TawkApi) {
+  if (!loadHandlerRegistered) {
+    const previousOnLoad = api.onLoad;
+    api.onLoad = () => {
+      previousOnLoad?.();
+      loadHandlerRegistered = false;
+      applyWidgetVisibility(api);
+      if (pendingOpen) {
+        pendingOpen = false;
+        api.showWidget?.();
+        api.maximize?.();
+      }
+    };
+    loadHandlerRegistered = true;
+  }
+
+  if (!minimizeHandlerRegistered) {
+    const previousOnChatMinimized = api.onChatMinimized;
+    api.onChatMinimized = () => {
+      previousOnChatMinimized?.();
+      if (!shouldShowWidget) api.hideWidget?.();
+    };
+    minimizeHandlerRegistered = true;
+  }
+}
+
+export function setTawkWidgetVisible(visible: boolean) {
+  shouldShowWidget = visible;
+  if (typeof window === "undefined") return;
+
+  const api = (window.Tawk_API = window.Tawk_API || {});
+  registerTawkHandlers(api);
+  applyWidgetVisibility(api);
+}
 
 export function loadTawkWidget() {
   if (typeof window === "undefined") return;
 
   window.Tawk_API = window.Tawk_API || {};
   window.Tawk_LoadStart = window.Tawk_LoadStart || new Date();
+  registerTawkHandlers(window.Tawk_API);
 
   if (document.getElementById(TAWK_SCRIPT_ID)) return;
 
@@ -37,24 +89,13 @@ export function openTawkChat() {
   if (typeof window === "undefined") return;
 
   const api = (window.Tawk_API = window.Tawk_API || {});
+  registerTawkHandlers(api);
+  api.showWidget?.();
   if (typeof api.maximize === "function") {
     api.maximize();
     return;
   }
 
   pendingOpen = true;
-  if (!loadHandlerRegistered) {
-    const previousOnLoad = api.onLoad;
-    api.onLoad = () => {
-      previousOnLoad?.();
-      loadHandlerRegistered = false;
-      if (pendingOpen) {
-        pendingOpen = false;
-        window.Tawk_API?.maximize?.();
-      }
-    };
-    loadHandlerRegistered = true;
-  }
-
   loadTawkWidget();
 }
