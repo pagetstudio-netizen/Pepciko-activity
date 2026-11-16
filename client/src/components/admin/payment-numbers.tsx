@@ -45,7 +45,7 @@ const COUNTRY_FLAGS: Record<string, string> = {
   TD: "🇹🇩", NE: "🇳🇪", CD: "🇨🇩", CF: "🇨🇫",
 };
 
-const emptyForm = { ownerName: "", phone: "", paymentLink: "", paymentType: "phone" as "phone" | "link", operatorName: "", country: "", logoUrl: "", isActive: true };
+const emptyForm = { ownerName: "", phone: "", paymentLink: "", ussdCode: "", paymentType: "phone" as "phone" | "link", operatorName: "", country: "", logoUrl: "", isActive: true };
 
 export default function AdminPaymentNumbers() {
   const { toast } = useToast();
@@ -75,6 +75,7 @@ export default function AdminPaymentNumbers() {
         ...form,
         phone: form.paymentType === "phone" ? form.phone : "",
         paymentLink: form.paymentType === "link" ? form.paymentLink.trim() : "",
+        ussdCode: form.paymentType === "phone" ? form.ussdCode.trim() : "",
         country: manualCountry ? manualCountryInput.toUpperCase().trim() : form.country,
       };
       if (!payload.country) throw new Error("Veuillez sélectionner ou saisir un pays");
@@ -147,6 +148,7 @@ export default function AdminPaymentNumbers() {
       operatorName: num.operatorName,
       country: isKnown ? num.country : "",
       logoUrl: num.logoUrl || "",
+      ussdCode: num.ussdCode || "",
       isActive: num.isActive,
     });
     setCustomOperator(isKnown && countryOperators.length > 0 && !countryOperators.includes(num.operatorName));
@@ -243,6 +245,7 @@ export default function AdminPaymentNumbers() {
                           <p className="font-mono text-primary font-bold">{num.phone}</p>
                         )}
                         <p className="text-sm text-muted-foreground">{num.ownerName}</p>
+                        {num.ussdCode && <p className="text-xs text-muted-foreground">USSD : <span className="font-mono">{num.ussdCode}</span></p>}
                       </div>
                       <div className="flex gap-1">
                         <Button size="icon" variant="ghost"
@@ -455,6 +458,18 @@ export default function AdminPaymentNumbers() {
                   placeholder="https://..." type="url" className="mt-1" data-testid="input-payment-link" />
               )}
             </div>
+            {form.paymentType === "phone" && (
+              <div>
+                <label className="text-sm font-medium">Code USSD <span className="text-muted-foreground font-normal">(facultatif)</span></label>
+                <Input
+                  value={form.ussdCode}
+                  onChange={(e) => setForm(f => ({ ...f, ussdCode: e.target.value.slice(0, 120) }))}
+                  placeholder="Ex. *123#"
+                  className="mt-1 font-mono"
+                  data-testid="input-ussd-code"
+                />
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium">Nom du propriétaire</label>
               <Input value={form.ownerName} onChange={(e) => setForm(f => ({ ...f, ownerName: e.target.value }))}

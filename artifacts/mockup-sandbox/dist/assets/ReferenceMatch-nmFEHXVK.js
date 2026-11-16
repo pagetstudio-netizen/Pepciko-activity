@@ -1,0 +1,27 @@
+import{j as e}from"./index-ti0hz0dt.js";/* empty css               */import{S as i}from"./send-y0WvXwDr.js";import{C as t}from"./clipboard-list-BiPcAdmE.js";import{C as d}from"./circle-user-round-COrD-K8M.js";import"./createLucideIcon-YifHdIiS.js";function c(){return e.jsxs("main",{className:"deposit-preview deposit-target",children:[e.jsx("style",{children:`
+        .deposit-target { min-height:100dvh; color:#292929; background:#fff; font-family:Arial,"Segoe UI",sans-serif; }
+        .dr-screen { width:100%; max-width:512px; min-height:100dvh; margin:0 auto; padding-bottom:110px; background:#fff; }
+        .dr-header { position:relative; height:60px; display:grid; place-items:center; font-size:20px; font-weight:700; }
+        .dr-back { position:absolute; top:10px; left:12px; width:40px; height:40px; display:grid; place-items:center; border:0; background:transparent; font-size:28px; color:#292929; }
+        .dr-content { margin:82px 20px 0; }
+        .dr-label,.dr-quick-title { margin:0; color:#333; font-size:20px; font-weight:400; line-height:1.25; }
+        .dr-input { height:53px; display:flex; align-items:center; margin-top:26px; border:1px solid #dedede; border-radius:6px; background:#fafafa; }
+        .dr-prefix { padding:0 8px 0 16px; font-size:14px; font-weight:700; }
+        .dr-input input { width:100%; height:100%; min-width:0; border:0; outline:0; padding:0 12px; background:transparent; font:17px Arial,sans-serif; }
+        .dr-input input::placeholder { color:#777; }
+        .dr-quick-title { margin:19px 0 20px; }
+        .dr-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); justify-items:center; gap:14px 12px; }
+        .dr-amount { width:100%; max-width:102px; aspect-ratio:1; border:1px solid #dedede; border-radius:50%; background:#fff; color:#858585; font:18px Arial,sans-serif; }
+        .dr-amount:first-child { border-color:#f0d59b; background:#fffaf1; color:#dfa32d; }
+        .dr-country { margin-top:64px; }
+        .dr-country label { display:block; margin-bottom:12px; color:#294657; font-size:18px; }
+        .dr-country select { width:100%; height:52px; padding:0 14px; border:1px solid #e2e2e2; border-radius:8px; background:#fff; color:#333; font:16px Arial,sans-serif; }
+        .dr-notes { margin-top:28px; padding:17px 14px 15px; border:1px solid #f0f0f0; border-radius:8px; color:#34495a; }
+        .dr-notes h2 { margin:0 0 18px; padding-left:13px; border-left:5px solid #e8d9a5; color:#414141; font-size:20px; }
+        .dr-notes p { margin:0 0 17px; font-size:16px; line-height:1.55; }
+        .dr-footer { position:fixed; z-index:20; bottom:0; left:50%; width:min(100%,512px); padding:18px 20px 20px; transform:translateX(-50%); background:#fff; box-shadow:0 -7px 20px rgba(0,0,0,.055); }
+        .dr-footer button { width:100%; height:59px; border:0; border-radius:999px; background:#ed2055; color:#fff; font-size:19px; font-weight:700; }
+        .dr-tools { position:fixed; z-index:30; top:40%; right:0; display:grid; gap:6px; }
+        .dr-tools button { width:48px; height:48px; display:grid; place-items:center; border:1px solid rgba(255,255,255,.8); border-radius:50%; background:#ec2054; color:#fff; box-shadow:0 2px 5px #9d2c4c55; }
+        @media(max-width:380px) { .dr-content{margin-right:16px;margin-left:16px}.dr-grid{gap:12px 8px}.dr-amount{font-size:15px}.dr-footer{padding-right:16px;padding-left:16px} }
+      `}),e.jsxs("div",{className:"dr-screen",children:[e.jsxs("header",{className:"dr-header",children:[e.jsx("button",{className:"dr-back","aria-label":"Retour",children:"‹"}),e.jsx("span",{children:"recharger"})]}),e.jsxs("section",{className:"dr-content",children:[e.jsx("h1",{className:"dr-label",children:"Montant du dépôt"}),e.jsxs("label",{className:"dr-input",children:[e.jsx("span",{className:"dr-prefix",children:"FCFA"}),e.jsx("input",{placeholder:"Saisissez le montant du dépôt"})]}),e.jsx("h2",{className:"dr-quick-title",children:"Montant rapide"}),e.jsx("div",{className:"dr-grid",children:[3e3,7e3,15e3,3e4,5e4,1e5,2e5,5e5].map(r=>e.jsx("button",{className:"dr-amount",children:r.toLocaleString("fr-FR")},r))}),e.jsxs("div",{className:"dr-country",children:[e.jsx("label",{children:"Pays du paiement"}),e.jsxs("select",{children:[e.jsx("option",{children:"Sélectionnez un pays"}),e.jsx("option",{children:"Togo"}),e.jsx("option",{children:"Bénin"})]})]}),e.jsxs("section",{className:"dr-notes",children:[e.jsx("h2",{children:"Remarques importantes"}),e.jsx("p",{children:"1. Veuillez ne pas modifier le montant du dépôt après avoir lancé le paiement."}),e.jsx("p",{children:"2. Effectuez chaque dépôt depuis cette page et ne sauvegardez pas vos informations de paiement."}),e.jsx("p",{children:"3. Le montant minimum de dépôt est de 4 000 FCFA."}),e.jsx("p",{children:"4. Les dépôts sont généralement traités en quelques minutes. Si le solde n’est pas crédité, contactez le service client."}),e.jsx("p",{children:"5. Pour un montant important, vous pouvez effectuer plusieurs dépôts plus petits."})]})]}),e.jsx("footer",{className:"dr-footer",children:e.jsx("button",{children:"Déposez maintenant"})}),e.jsxs("aside",{className:"dr-tools","aria-label":"Accès rapides",children:[e.jsx("button",{"aria-label":"Telegram",children:e.jsx(i,{size:24})}),e.jsx("button",{"aria-label":"Tâches",children:e.jsx(t,{size:24})}),e.jsx("button",{"aria-label":"Service",children:e.jsx(d,{size:24})})]})]})]})}export{c as ReferenceMatch};

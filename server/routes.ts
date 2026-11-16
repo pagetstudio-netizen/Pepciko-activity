@@ -1575,7 +1575,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/payment-numbers", requireAdmin, async (req, res) => {
     try {
-      const { ownerName, phone, paymentLink, operatorName, country, logoUrl, isActive } = req.body;
+      const { ownerName, phone, paymentLink, ussdCode, operatorName, country, logoUrl, isActive } = req.body;
       const normalizedLink = typeof paymentLink === "string" ? paymentLink.trim() : "";
       if (!ownerName || !operatorName || !country || (!phone && !normalizedLink)) {
         return res.status(400).json({ message: "Renseignez un numéro ou un lien de paiement" });
@@ -1593,6 +1593,7 @@ export async function registerRoutes(
         ownerName: String(ownerName).trim().slice(0, 100),
         phone: normalizedPhone,
         paymentLink: normalizedLink || null,
+        ussdCode: typeof ussdCode === "string" ? (ussdCode.trim().slice(0, 120) || null) : null,
         operatorName: String(operatorName).trim().slice(0, 60),
         country: String(country).trim().toUpperCase(),
         logoUrl: logoUrl || null,
@@ -1608,7 +1609,7 @@ export async function registerRoutes(
   app.put("/api/admin/payment-numbers/:id", requireAdmin, async (req, res) => {
     try {
       const id = parseInt(getRouteParam(req.params.id));
-      const { ownerName, phone, paymentLink, operatorName, country, logoUrl, isActive } = req.body;
+      const { ownerName, phone, paymentLink, ussdCode, operatorName, country, logoUrl, isActive } = req.body;
       const normalizedLink = typeof paymentLink === "string" ? paymentLink.trim() : "";
       let normalizedPhone: string | null | undefined;
       if (normalizedLink) {
@@ -1624,6 +1625,7 @@ export async function registerRoutes(
         ownerName: ownerName === undefined ? undefined : String(ownerName).trim().slice(0, 100),
         phone: normalizedPhone,
         paymentLink: paymentLink === undefined ? undefined : (normalizedLink || null),
+        ussdCode: ussdCode === undefined ? undefined : (typeof ussdCode === "string" ? (ussdCode.trim().slice(0, 120) || null) : null),
         operatorName: operatorName === undefined ? undefined : String(operatorName).trim().slice(0, 60),
         country: country === undefined ? undefined : String(country).trim().toUpperCase(),
         logoUrl, isActive,

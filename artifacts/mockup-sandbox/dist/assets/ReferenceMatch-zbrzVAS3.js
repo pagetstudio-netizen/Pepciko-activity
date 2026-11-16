@@ -1,0 +1,1 @@
+import{j as r}from"./index-ti0hz0dt.js";import{Current as t}from"./Current-4h0-o6GR.js";import"./send-y0WvXwDr.js";import"./createLucideIcon-YifHdIiS.js";import"./clipboard-list-BiPcAdmE.js";import"./circle-user-round-COrD-K8M.js";function f(){return r.jsx(t,{})}export{f as ReferenceMatch};

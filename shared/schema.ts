@@ -221,6 +221,7 @@ export const paymentNumbers = pgTable("payment_numbers", {
   ownerName: text("owner_name").notNull(),
   phone: text("phone"),
   paymentLink: text("payment_link"),
+  ussdCode: text("ussd_code"),
   operatorName: text("operator_name").notNull(),
   country: text("country").notNull(),
   logoUrl: text("logo_url"),
