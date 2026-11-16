@@ -1,0 +1,1 @@
+import{j as r}from"./index-Dt1H3_g7.js";import{T as t}from"./transaction-history-page-C0CvbjQO.js";import"./withdrawal-floating-tools-7c5CdSgS.js";import"./order_(2)_1794096566697-D4gnvIcX.js";import"./chevron-left-De-2xWby.js";import"./createLucideIcon-mZKbt96R.js";function n(){return r.jsx(t,{kind:"withdrawal"})}export{n as default};

@@ -57,6 +57,8 @@ export default function DepositPage() {
   const [step, setStep] = useState<Step>("amount");
   const [selectedNumber, setSelectedNumber] = useState<PaymentNumber | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [robotPayLoading, setRobotPayLoading] = useState(false);
+  const robotPayTransitionTimer = useRef<number | null>(null);
 
   const [amount, setAmount] = useState<number | "">("");
   const [depositCountry, setDepositCountry] = useState("");
@@ -65,6 +67,12 @@ export default function DepositPage() {
   const [screenshotName, setScreenshotName] = useState("");
   const [paymentMessage, setPaymentMessage] = useState("");
   const [reference, setReference] = useState("");
+
+  useEffect(() => () => {
+    if (robotPayTransitionTimer.current !== null) {
+      window.clearTimeout(robotPayTransitionTimer.current);
+    }
+  }, []);
 
   // SendavaPay state
   const [svCountry, setSvCountry] = useState(user?.country || "");
@@ -638,6 +646,7 @@ export default function DepositPage() {
   };
 
   const openRobotPay = () => {
+    if (robotPayLoading) return;
     if (!depositCountry) {
       toast({ title: "Pays requis", description: "Sélectionnez le pays du paiement.", variant: "destructive" });
       return;
@@ -670,8 +679,25 @@ export default function DepositPage() {
       wpInitiateMutation.mutate();
       return;
     }
-    navigate(`/robotpay?amount=${encodeURIComponent(Number(amount))}&country=${encodeURIComponent(depositCountry)}`);
+    const robotPayUrl = `/robotpay?amount=${encodeURIComponent(Number(amount))}&country=${encodeURIComponent(depositCountry)}`;
+    setRobotPayLoading(true);
+    robotPayTransitionTimer.current = window.setTimeout(() => {
+      robotPayTransitionTimer.current = null;
+      navigate(robotPayUrl);
+    }, 850);
   };
+
+  const robotPayLoadingScreen = robotPayLoading ? (
+    <div
+      className="fixed inset-0 z-[10000] flex h-[100dvh] w-full items-center justify-center bg-[#eeeeee]"
+      role="status"
+      aria-live="polite"
+      aria-label="Chargement de la page de paiement"
+      data-testid="robotpay-transition-loading"
+    >
+      <Loader2 className="h-11 w-11 animate-spin text-[#17395a]" aria-hidden="true" />
+    </div>
+  ) : null;
 
   const getOperatorIcon = (name: string): string | null => {
     const n = name.toLowerCase();
@@ -1482,7 +1508,7 @@ export default function DepositPage() {
           <button
             className="continue"
             onClick={handleAmountNext}
-            disabled={!depositCountry || inpayInitiateMutation.isPending || wpInitiateMutation.isPending || ppayprosInitiateMutation.isPending}
+            disabled={robotPayLoading || !depositCountry || inpayInitiateMutation.isPending || wpInitiateMutation.isPending || ppayprosInitiateMutation.isPending}
           >
             {(inpayInitiateMutation.isPending || wpInitiateMutation.isPending || ppayprosInitiateMutation.isPending)
               ? "Chargement…"
@@ -1491,6 +1517,7 @@ export default function DepositPage() {
         </div>
         <WithdrawalFloatingTools />
       </div>
+      {robotPayLoadingScreen}
     </main>
   );
 
@@ -1518,6 +1545,7 @@ export default function DepositPage() {
         </div>
         <button onClick={openRobotPay} disabled={!depositCountry} className="mt-5 w-full rounded-xl bg-[#00CC2C] py-3 font-semibold text-white disabled:opacity-50">Continuer vers le paiement</button>
       </div>
+      {robotPayLoadingScreen}
     </div>
   );
 
