@@ -26,6 +26,7 @@
 - [Fortune wheel artwork](fortune-wheel-artwork.md) — Use the real wheel artwork from the user’s reference instead of CSS-drawn coin or GO graphics.
 - [Fortune wheel turns](fortune-wheel-spins.md) — Preserve server-side eligibility and payout rules; use the original screenshot’s wording on the game page.
 - [Withdrawal account editing](withdrawal-account-editing.md) — Each user has one editable primary withdrawal account; keep operators sourced from Admin-configured countries.
+- [Payment operator logos](payment-operator-logos.md) — Use the user-supplied operator marks across payment selectors; preserve Admin-configured logos when present.
 - [Activity product launch clocks](activity-product-launch-clocks.md) — TG, BF, and CI share local time; BJ, CM, and NE launch one hour ahead.
 - [Activity product purchase rules](activity-product-purchase-rules.md) — Require a paid stable purchase and cap activity price at the highest single stable purchase; enforce stock and launch limits.
 - [Product naming rules](activity-product-names.md) — Stable, activity, and Bien-être products use independent canonical name sequences.

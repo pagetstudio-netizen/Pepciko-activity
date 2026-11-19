@@ -6,6 +6,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { copyTextWithToast } from "@/lib/copy-to-clipboard";
+import { getPaymentOperatorLogo } from "@/lib/payment-operator-logos";
 import EmptyState from "@/components/empty-state";
 import type { ApiCountry } from "@/lib/countries";
 import type { PaymentNumber } from "@shared/schema";
@@ -610,8 +611,8 @@ export default function RobotPayPage() {
                 <div className="mt-[clamp(8px,1.7dvh,15px)] flex flex-wrap justify-center gap-3 pr-14">
                   {operators.map((op, i) => {
                     const key = getOperatorKey(op);
-                    const logo = op.manualNumber?.logoUrl || op.logoUrl;
                     const label = op.name || op.operator || op.code || copy.operatorFallback;
+                    const logo = op.manualNumber?.logoUrl || getPaymentOperatorLogo(label) || op.logoUrl;
                     const selected = selectedOperatorKey === key;
                     return (
                       <button

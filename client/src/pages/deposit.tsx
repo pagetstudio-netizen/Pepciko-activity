@@ -12,6 +12,7 @@ import { Link, useLocation } from "wouter";
 import type { ApiCountry } from "@/lib/countries";
 import type { PaymentNumber } from "@shared/schema";
 import { normalizeBeninPhone } from "@shared/phone";
+import { getPaymentOperatorLogo } from "@/lib/payment-operator-logos";
 import EmptyState from "@/components/empty-state";
 import WithdrawalFloatingTools from "@/components/withdrawal-floating-tools";
 
@@ -698,17 +699,6 @@ export default function DepositPage() {
       <Loader2 className="h-11 w-11 animate-spin text-[#17395a]" aria-hidden="true" />
     </div>
   ) : null;
-
-  const getOperatorIcon = (name: string): string | null => {
-    const n = name.toLowerCase();
-    if (n.includes("tmoney") || n.includes("t-money")) return "/operators/tmoney.png";
-    if (n.includes("moov")) return "/operators/moov.jpg";
-    if (n.includes("orange")) return "/operators/orange.png";
-    if (n.includes("mtn")) return "/operators/mtn.png";
-    if (n.includes("airtel")) return "/operators/airtel.png";
-    if (n.includes("wave")) return "/operators/wave.png";
-    return null;
-  };
 
   const handleSubmit = () => {
     if (!senderPhone.trim()) {
@@ -1770,9 +1760,13 @@ export default function DepositPage() {
             <div className="space-y-2">
               {ashtechOperators.map((operator, index) => {
                 const name = typeof operator === "string" ? operator : (operator.name || operator.code || `Opérateur ${index + 1}`);
+                const icon = getPaymentOperatorLogo(name);
                 return <button key={`${name}-${index}`} onClick={() => setAshtechOperator(name)}
                   className={`w-full flex items-center justify-between px-4 py-4 rounded-xl border-2 ${ashtechOperator === name ? "border-[#00CC2C] bg-green-50" : "border-gray-200 bg-white"}`}>
-                  <span className="font-semibold text-gray-900 text-sm">{name}</span>
+                  <span className="flex min-w-0 items-center gap-3">
+                    {icon ? <img src={icon} alt="" className="h-10 w-10 shrink-0 rounded-lg bg-white object-contain" /> : null}
+                    <span className="font-semibold text-gray-900 text-sm">{name}</span>
+                  </span>
                   {ashtechOperator === name && <CheckCircle className="w-5 h-5 text-[#00CC2C]" />}
                 </button>;
               })}
@@ -1911,7 +1905,7 @@ export default function DepositPage() {
           ) : (
             <div className="space-y-2">
               {svOperators.map((op) => {
-                const icon = getOperatorIcon(op.name);
+                const icon = getPaymentOperatorLogo(op.name);
                 return (
                   <button
                     key={op.id}
@@ -1924,7 +1918,7 @@ export default function DepositPage() {
                   >
                     <div className="flex items-center gap-3">
                       {icon ? (
-                        <img src={icon} alt={op.name} className="w-10 h-10 rounded-full object-cover border border-gray-100" />
+                        <img src={icon} alt={op.name} className="w-10 h-10 rounded-lg border border-gray-100 bg-white object-contain" />
                       ) : (
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
                           svOperator?.id === op.id ? "bg-[#00CC2C] text-white" : "bg-gray-100 text-gray-600"
