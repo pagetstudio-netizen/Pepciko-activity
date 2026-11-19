@@ -197,6 +197,11 @@ test("sends Côte d'Ivoire and Cameroon payins with their own phone formats", as
       assert.equal(requests[index].body.appId, testCase.appId);
       assert.equal(requests[index].body.customerPhone, testCase.expectedPhone);
       assert.equal(requests[index].body.wayCode, testCase.wayCode);
+      if (testCase.country === "CI") {
+        assert.equal(requests[index].body.extParam, testCase.expectedPhone);
+      } else {
+        assert.equal("extParam" in requests[index].body, false);
+      }
     }
   } finally {
     globalThis.fetch = originalFetch;

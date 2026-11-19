@@ -270,13 +270,16 @@ export async function createPpayProsPayin(params: {
   notifyUrl: string;
   returnUrl: string;
 }): Promise<PpayProsPayinResult> {
+  const countryCode = params.country.trim().toUpperCase();
+  const customerPhone = formatPpayProsPhone(countryCode, params.customerPhone);
   const data = await postSigned(params.country, "/api/pay/pay", {
     mchOrderNo: params.merchantOrderNo,
     amount: toPpayProsAmount(params.amountXof),
     customerName: params.customerName,
     customerEmail: params.customerEmail,
-    customerPhone: formatPpayProsPhone(params.country, params.customerPhone),
+    customerPhone,
     wayCode: params.wayCode,
+    ...(countryCode === "CI" ? { extParam: customerPhone } : {}),
     notifyUrl: params.notifyUrl,
     returnUrl: params.returnUrl,
   });
