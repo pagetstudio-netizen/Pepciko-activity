@@ -39,4 +39,4 @@
 - [Daily check-in bonus](daily-checkin-bonus.md) — Scale daily rewards from 45 to 150 FCFA by approved-deposit VIP level; preserve the 24-hour active-stable rule.
 - [Authentication viewport](authentication-viewport.md) — Keep login and registration fixed without page scrolling; use the supplied phone, lock, and account field icons.
 - [Signup code and withdrawal password](auth-captcha-transaction-password.md) — Display the generated verification code in the field; keep it separate from SMS and login passwords.
-- [VIP level rules](vip-level-policy.md) — Base VIP on approved cumulative deposits; preserve the user-confirmed thresholds and fixed INR-to-FCFA conversion.
+- [VIP level rules](vip-level-policy.md) — Count approved deposits plus specified referral, invitation, check-in, and wheel credits; record Admin increases as approved deposits.

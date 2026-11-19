@@ -20,7 +20,7 @@ type VipLevel = {
 };
 
 type VipLevelsResponse = {
-  totalDeposits: number;
+  totalQualifyingCredits: number;
   currentLevel: number;
   levels: VipLevel[];
 };
@@ -111,11 +111,11 @@ export default function VipLevelsPage() {
                     </div>
                     <div className="vip-level-inner">
                       <p>
-                        Passez au statut VIP{item.level} lorsque le cumul de vos recharges approuvées atteint{" "}
+                        Pour passer au niveau VIP{item.level}, il faut cumuler le montant indiqué :{" "}
                         <strong>{formatFcfa(item.thresholdFcfa)}</strong>.
                       </p>
                       <div className="vip-progress-label">
-                        <span>Recharges approuvées cumulées</span>
+                        <span>Montant cumulé</span>
                         <span><b>{formatFcfa(item.progressFcfa)}</b> / {formatFcfa(item.thresholdFcfa)}</span>
                       </div>
                       <div

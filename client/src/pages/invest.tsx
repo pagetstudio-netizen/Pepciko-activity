@@ -242,12 +242,8 @@ export default function InvestPage() {
                       <strong>{formatFcfa(product.productType === "activity" ? total : daily)}</strong>
                       <span>Revenu</span>
                       <strong>{duration} jours</strong>
-                      {product.productType !== "stable" && (
-                        <>
-                          <span>Revenu total</span>
-                          <strong>{formatFcfa(totalRevenue)}</strong>
-                        </>
-                      )}
+                      <span>Revenu total</span>
+                      <strong>{formatFcfa(totalRevenue)}</strong>
                     </div>
                   </div>
 

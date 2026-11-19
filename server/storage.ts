@@ -7,6 +7,7 @@ import {
   type GiftCode, type GiftCodeClaim, type Country, type BlogPost
 } from "@shared/schema";
 import { db } from "./db";
+import { calculateNetAdminBalanceCredit } from "./admin-balance-credit";
 import { INVITATION_TASK_KEY_PREFIX, countQualifiedDirectReferrals } from "./invitation-tasks";
 import { calculateMaturityPayout } from "./product-payout";
 import { isUserProductRevoked } from "./product-revocation";
@@ -36,7 +37,10 @@ import {
   getDailyCheckinCooldownUntil,
   getDailyCheckinDateKey,
 } from "@shared/daily-checkin";
-import { calculateVipLevels } from "@shared/vip-levels";
+import {
+  calculateVipLevels,
+  VIP_QUALIFYING_CREDIT_TRANSACTION_TYPES,
+} from "@shared/vip-levels";
 import { eq, and, asc, desc, sql, gte, lte, or, isNull, inArray, lt, ne } from "drizzle-orm";
 import { hashPassword } from "./password-utils";
 import {
@@ -154,7 +158,7 @@ export interface IStorage {
     amount: number | null,
   ): Promise<{ userFound: boolean; claimed: boolean; availableSpins: number }>;
   grantFortuneWheelSpins(userId: number, count: number): Promise<number | undefined>;
-  setBalances(userId: number, depositBalance: number, withdrawalBalance: number): Promise<User>;
+  setBalances(userId: number, depositBalance: number, withdrawalBalance: number, processedBy?: number): Promise<User>;
   getAllUsers(filter?: string, limit?: number, offset?: number): Promise<{ users: User[], total: number }>;
   
   // Products
@@ -200,6 +204,7 @@ export interface IStorage {
   claimAdminDepositApproval(id: number, processedBy: number): Promise<Deposit | undefined>;
   getDeposits(status?: string): Promise<(Deposit & { user: User })[]>;
   getUserApprovedDepositTotal(userId: number): Promise<number>;
+  getUserVipQualifyingTotal(userId: number): Promise<number>;
   getUserDeposits(userId: number): Promise<Deposit[]>;
   updateDeposit(id: number, data: Partial<Deposit>): Promise<Deposit>;
   cleanupDepositScreenshots(): Promise<void>;
@@ -440,7 +445,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId));
     if (!member) return null;
 
-    const [claims, hasActiveStableProduct, approvedDepositSummary] = await Promise.all([
+    const [claims, hasActiveStableProduct, vipQualifyingTotal] = await Promise.all([
       db.select({
         amount: transactions.amount,
         createdAt: transactions.createdAt,
@@ -452,9 +457,9 @@ export class DatabaseStorage implements IStorage {
         ))
         .orderBy(desc(transactions.createdAt)),
       this.hasActiveStableProduct(userId),
-      getApprovedDepositSummary([userId]),
+      this.getUserVipQualifyingTotal(userId),
     ]);
-    const currentVipLevel = calculateVipLevels(approvedDepositSummary.amount).currentLevel;
+    const currentVipLevel = calculateVipLevels(vipQualifyingTotal).currentLevel;
     const rewardAmount = getDailyCheckinRewardForVip(currentVipLevel);
 
     const now = new Date();
@@ -584,7 +589,18 @@ export class DatabaseStorage implements IStorage {
           eq(deposits.userId, userId),
           eq(deposits.status, "approved"),
         ));
-      const currentVipLevel = calculateVipLevels(Number(approvedDepositSummary?.amount ?? 0)).currentLevel;
+      const [eligibleCreditSummary] = await tx.select({
+        amount: sql<number>`COALESCE(SUM(${transactions.amount}), 0)`,
+      })
+        .from(transactions)
+        .where(and(
+          eq(transactions.userId, userId),
+          inArray(transactions.type, [...VIP_QUALIFYING_CREDIT_TRANSACTION_TYPES]),
+          sql`${transactions.amount} > 0`,
+        ));
+      const vipQualifyingTotal = Number(approvedDepositSummary?.amount ?? 0)
+        + Number(eligibleCreditSummary?.amount ?? 0);
+      const currentVipLevel = calculateVipLevels(vipQualifyingTotal).currentLevel;
       const rewardAmount = getDailyCheckinRewardForVip(currentVipLevel);
       const streakDays = calculateDailyCheckinStreakAfterClaim(claimDates, today);
       const totalCapturedProfit = claims.reduce(
@@ -699,7 +715,12 @@ export class DatabaseStorage implements IStorage {
     return updated?.fortuneWheelSpins;
   }
 
-  async setBalances(userId: number, depositBalance: number, withdrawalBalance: number): Promise<User> {
+  async setBalances(
+    userId: number,
+    depositBalance: number,
+    withdrawalBalance: number,
+    processedBy?: number,
+  ): Promise<User> {
     if (
       !Number.isFinite(depositBalance) || depositBalance < 0 ||
       !Number.isFinite(withdrawalBalance) || withdrawalBalance < 0
@@ -709,13 +730,62 @@ export class DatabaseStorage implements IStorage {
 
     const deposit = Number(depositBalance.toFixed(2));
     const withdrawal = Number(withdrawalBalance.toFixed(2));
-    const [user] = await db.update(users).set({
-      depositBalance: deposit.toFixed(2),
-      withdrawalBalance: withdrawal.toFixed(2),
-      balance: (deposit + withdrawal).toFixed(2),
-    }).where(eq(users.id, userId)).returning();
-    if (!user) throw new Error("Utilisateur non trouvé");
-    return user;
+    return db.transaction(async (tx) => {
+      const [existing] = await tx.select({
+        id: users.id,
+        fullName: users.fullName,
+        phone: users.phone,
+        country: users.country,
+        depositBalance: users.depositBalance,
+        withdrawalBalance: users.withdrawalBalance,
+      })
+        .from(users)
+        .where(eq(users.id, userId))
+        .for("update");
+      if (!existing) throw new Error("Utilisateur non trouvé");
+
+      const netCredit = calculateNetAdminBalanceCredit(
+        Number(existing.depositBalance),
+        Number(existing.withdrawalBalance),
+        deposit,
+        withdrawal,
+      );
+
+      const [user] = await tx.update(users).set({
+        depositBalance: deposit.toFixed(2),
+        withdrawalBalance: withdrawal.toFixed(2),
+        balance: (deposit + withdrawal).toFixed(2),
+        ...(netCredit > 0 ? { hasDeposited: true } : {}),
+      }).where(eq(users.id, userId)).returning();
+      if (!user) throw new Error("Utilisateur non trouvé");
+
+      if (netCredit > 0) {
+        const now = new Date();
+        await tx.insert(deposits).values({
+          userId,
+          amount: netCredit,
+          accountName: existing.fullName,
+          accountNumber: existing.phone,
+          country: existing.country,
+          paymentMethod: "Crédit Admin",
+          channelName: "Crédit administrateur",
+          paymentMessage: "Hausse nette de solde enregistrée comme dépôt approuvé par l’Admin.",
+          reference: `ADMIN-CREDIT-${userId}-${now.getTime()}`,
+          status: "approved",
+          processedAt: now,
+          processedBy: processedBy ?? null,
+        });
+        await tx.insert(transactions).values({
+          userId,
+          type: "deposit",
+          amount: netCredit.toFixed(2),
+          description: "Crédit Admin enregistré comme dépôt approuvé",
+          createdAt: now,
+        });
+      }
+
+      return user;
+    });
   }
 
   async getAllUsers(filter?: string, limit: number = 50, offset: number = 0): Promise<{ users: User[], total: number }> {
@@ -1450,6 +1520,24 @@ export class DatabaseStorage implements IStorage {
   async getUserApprovedDepositTotal(userId: number): Promise<number> {
     const summary = await getApprovedDepositSummary([userId]);
     return summary.amount;
+  }
+
+  async getUserVipQualifyingTotal(userId: number): Promise<number> {
+    const [depositSummary, creditSummary] = await Promise.all([
+      getApprovedDepositSummary([userId]),
+      db.select({
+        amount: sql<string>`COALESCE(SUM(${transactions.amount}), 0)`,
+      })
+        .from(transactions)
+        .where(and(
+          eq(transactions.userId, userId),
+          inArray(transactions.type, [...VIP_QUALIFYING_CREDIT_TRANSACTION_TYPES]),
+          sql`${transactions.amount} > 0`,
+        ))
+        .then((rows) => rows[0]),
+    ]);
+
+    return depositSummary.amount + Number(creditSummary?.amount ?? 0);
   }
 
   async updateDeposit(id: number, data: Partial<Deposit>): Promise<Deposit> {

@@ -1311,8 +1311,8 @@ export async function registerRoutes(
   // Get user's purchased products
   app.get("/api/user/vip-levels", requireAuth, async (req, res) => {
     try {
-      const totalDeposits = await storage.getUserApprovedDepositTotal(req.session.userId!);
-      const summary = calculateVipLevels(totalDeposits);
+      const totalQualifyingCredits = await storage.getUserVipQualifyingTotal(req.session.userId!);
+      const summary = calculateVipLevels(totalQualifyingCredits);
       res.setHeader("Cache-Control", "no-store");
       return res.json(summary);
     } catch (error: any) {
@@ -4334,7 +4334,7 @@ export async function registerRoutes(
           ) {
             return res.status(400).json({ message: "Saisissez deux soldes valides, positifs ou nuls." });
           }
-          await storage.setBalances(userId, depositBalance, withdrawalBalance);
+          await storage.setBalances(userId, depositBalance, withdrawalBalance, req.session.userId!);
           await storage.logAdminAction(
             req.session.userId!,
             "update_balances",
