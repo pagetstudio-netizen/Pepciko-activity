@@ -775,6 +775,7 @@ export default function AdminSettings({ isSuperAdmin }: AdminSettingsProps) {
             <div className="space-y-3">
               {PPAYPROS_COUNTRIES.map(({ code, name, wayCode, payoutAccountCode }) => {
                 const providerConfig = ppayprosConfiguration?.countries.find((entry) => entry.code === code);
+                const isCameroon = String(code) === "CM";
                 const balance = ppayprosBalances[code];
                 const canEnablePayin = Boolean(
                   providerConfig?.credentials.configured &&
@@ -876,8 +877,15 @@ export default function AdminSettings({ isSuperAdmin }: AdminSettingsProps) {
                         <FormItem>
                           <FormLabel className="text-xs">Code de retrait (accountCode)</FormLabel>
                           <FormControl>
-                            <Input {...field} value={String(field.value ?? "")} placeholder={payoutAccountCode || (code === "CM" ? "ORANGE ou MTN" : "À confirmer par PPayPros")} />
+                            <Input {...field} value={String(field.value ?? "")} placeholder={payoutAccountCode || (isCameroon ? "ORANGE ou MTN" : "À confirmer par PPayPros")} />
                           </FormControl>
+                          <FormDescription className="text-xs">
+                            {isCameroon
+                              ? "ORANGE ou MTN est envoyé selon l’opérateur du portefeuille enregistré."
+                              : payoutAccountCode === "Bank"
+                                ? "PPayPros indique « Bank » comme code générique lorsqu’aucun code bancaire spécifique n’est requis."
+                                : "Saisissez le code de retrait confirmé pour ce pays."}
+                          </FormDescription>
                         </FormItem>
                       )} />
                     </div>

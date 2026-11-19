@@ -156,6 +156,25 @@ export function getPpayProsDefaultWayCode(country: string): string {
   return PPAYPROS_COUNTRIES.find(({ code }) => code === country.trim().toUpperCase())?.wayCode || "";
 }
 
+export function resolvePpayProsPayoutAccountCode(
+  country: string,
+  paymentMethod: string,
+  configuredCode = "",
+): string {
+  const countryCode = country.trim().toUpperCase();
+  const configured = configuredCode.trim();
+  if (countryCode === "CM") {
+    if (!paymentMethod.trim()) {
+      return configured || PPAYPROS_COUNTRIES.find(({ code }) => code === countryCode)?.payoutAccountCode || "";
+    }
+    const operator = paymentMethod.trim().toUpperCase();
+    if (operator.includes("MTN")) return "MTN";
+    if (operator.includes("ORANGE")) return "ORANGE";
+    return "";
+  }
+  return configured || PPAYPROS_COUNTRIES.find(({ code }) => code === countryCode)?.payoutAccountCode || "";
+}
+
 export function createPpayProsMerchantOrderNo(kind: "payin" | "payout", recordId: number): string {
   if (!Number.isSafeInteger(recordId) || recordId <= 0) throw new Error("Référence de paiement invalide.");
   return `${kind === "payin" ? "PPIN" : "PPOUT"}-${recordId}`;

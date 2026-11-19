@@ -136,6 +136,7 @@ import {
   PpayProsApiError,
   queryPpayProsPayin,
   queryPpayProsPayout,
+  resolvePpayProsPayoutAccountCode,
   toPpayProsAmount,
   verifyPpayProsSignature,
 } from "./ppaypros";
@@ -346,11 +347,13 @@ function getPpayProsWayCode(country: string, settings: Record<string, string>): 
   return (settings[key] ?? getPpayProsDefaultWayCode(country)).trim();
 }
 
-function getPpayProsPayoutAccountCode(country: string, settings: Record<string, string>): string {
+function getPpayProsPayoutAccountCode(
+  country: string,
+  settings: Record<string, string>,
+  paymentMethod = "",
+): string {
   const key = `ppayprosPayoutAccountCode_${country.trim().toUpperCase()}`;
-  const configuredCode = settings[key]?.trim();
-  if (configuredCode) return configuredCode;
-  return PPAYPROS_COUNTRIES.find(({ code }) => code === country.trim().toUpperCase())?.payoutAccountCode || "";
+  return resolvePpayProsPayoutAccountCode(country, paymentMethod, settings[key] || "");
 }
 
 async function reconcilePpayProsPayout(
@@ -4214,9 +4217,17 @@ export async function registerRoutes(
       getPpayProsCredentials(countryCode);
       const accountPhone = formatPpayProsPhone(countryCode, withdrawal.accountNumber);
       toPpayProsAmount(withdrawal.netAmount);
-      const payoutAccountCode = getPpayProsPayoutAccountCode(countryCode, settings);
+      const payoutAccountCode = getPpayProsPayoutAccountCode(
+        countryCode,
+        settings,
+        withdrawal.paymentMethod,
+      );
       if (!payoutAccountCode) {
-        return res.status(400).json({ message: `Le code de retrait PPayPros n'est pas configuré pour ${countryCode}.` });
+        return res.status(400).json({
+          message: countryCode === "CM"
+            ? "Le portefeuille doit être MTN ou Orange pour un retrait PPayPros au Cameroun."
+            : `Le code de retrait PPayPros n'est pas configuré pour ${countryCode}.`,
+        });
       }
       const merchantOrderNo = createPpayProsMerchantOrderNo("payout", withdrawal.id);
       const claimed = await storage.claimPpayProsWithdrawal(withdrawal.id, merchantOrderNo);

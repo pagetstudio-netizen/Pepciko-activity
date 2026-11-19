@@ -10,6 +10,7 @@ import {
   getPpayProsDefaultWayCode,
   getPpayProsBalance,
   queryPpayProsPayout,
+  resolvePpayProsPayoutAccountCode,
   toPpayProsAmount,
 } from "./ppaypros";
 import {
@@ -286,6 +287,14 @@ test("formats Togo and Côte d'Ivoire payout accounts using the selected country
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("resolves documented PPayPros payout account codes by country and saved wallet operator", () => {
+  assert.equal(resolvePpayProsPayoutAccountCode("TG", "Togocel"), "Bank");
+  assert.equal(resolvePpayProsPayoutAccountCode("CI", "Wave Côte d'Ivoire"), "Bank");
+  assert.equal(resolvePpayProsPayoutAccountCode("CM", "MTN Cameroun", "ORANGE/MTN"), "MTN");
+  assert.equal(resolvePpayProsPayoutAccountCode("CM", "Orange Cameroun", "ORANGE/MTN"), "ORANGE");
+  assert.equal(resolvePpayProsPayoutAccountCode("CM", "Moov Cameroun", "ORANGE/MTN"), "");
 });
 
 test("sends and checks payouts with the selected country and wallet code", async () => {
