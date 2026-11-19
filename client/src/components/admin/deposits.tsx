@@ -95,6 +95,29 @@ export default function AdminDeposits() {
     onSettled: () => setProcessingId(null),
   });
 
+  const ppayprosStatusMutation = useMutation({
+    mutationFn: async (id: number) => {
+      setProcessingId(id);
+      const response = await fetch(`/api/admin/deposits/${id}/ppaypros/status`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || `Erreur ${response.status}`);
+      return data as { status: string; providerStatus?: string };
+    },
+    onSuccess: ({ status }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deposits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      const label = status === "approved" ? "confirmé" : status === "rejected" ? "refusé" : "toujours en traitement";
+      toast({ title: "Statut PPayPros vérifié", description: `Le dépôt est ${label}.` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Erreur PPayPros", description: error.message, variant: "destructive" });
+    },
+    onSettled: () => setProcessingId(null),
+  });
+
   const filteredDeposits = deposits?.filter(d =>
     d.accountNumber.includes(filter) ||
     d.user.phone.includes(filter) ||
@@ -158,6 +181,8 @@ export default function AdminDeposits() {
             const isManual = !!(deposit as any).paymentNumberId || !!(deposit as any).channelName;
             const isAshtech = !!(deposit as any).ashtechTransactionId || String((deposit as any).ashtechReference || "").startsWith("paget-studio-");
             const isDrimPay = !!(deposit as any).drimpayReference || !!(deposit as any).drimpayOrderId;
+            const isPpayPros = deposit.paymentMethod === "PPayPros" ||
+              String((deposit as any).omnipayReference || "").startsWith("PPIN-");
             const ashtechExpired = isAshtech && (deposit.status === "rejected" || Date.now() - new Date(deposit.createdAt).getTime() >= 3 * 60 * 60 * 1000);
             return (
               <Card key={deposit.id} className={deposit.status === "pending" ? "border-yellow-400/50" : ""}>
@@ -295,6 +320,20 @@ export default function AdminDeposits() {
                   {/* Actions */}
                   {(deposit.status === "pending" || deposit.status === "processing" || ((isAshtech || isDrimPay) && deposit.status === "rejected")) && (
                     <div className="flex gap-2">
+                      {isPpayPros && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => ppayprosStatusMutation.mutate(deposit.id)}
+                          disabled={processingId === deposit.id}
+                          data-testid={`button-check-ppaypros-deposit-${deposit.id}`}
+                        >
+                          {processingId === deposit.id
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <><RefreshCw className="w-4 h-4 mr-1" />Vérifier PPayPros</>}
+                        </Button>
+                      )}
                       {isDrimPay && (
                         <Button
                           size="sm"

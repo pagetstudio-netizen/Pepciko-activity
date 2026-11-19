@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
-import { normalizeBeninPhone } from "@shared/phone";
+import { getPpayProsPhoneError, normalizePpayProsPhone } from "@shared/phone";
+import { PPAYPROS_COUNTRIES } from "@shared/ppaypros";
+export { PPAYPROS_COUNTRIES } from "@shared/ppaypros";
 
 const PPAYPROS_API_BASE = "https://pay.ppaypros.com";
 const PPAYPROS_AMOUNT_SCALE = 100;
@@ -36,16 +38,68 @@ export class PpayProsApiError extends Error {
   }
 }
 
-export function getPpayProsCredentials(): PpayProsCredentials {
-  const merchantNo = process.env.PPAYPROS_MCH_NO?.trim() || "";
-  const appId = process.env.PPAYPROS_APP_ID?.trim() || "";
-  const privateKey = process.env.PPAYPROS_PRIVATE_KEY?.trim() || "";
-  if (!merchantNo || !appId || !privateKey) {
-    throw new Error(
-      "PPayPros n'est pas configuré : ajoutez PPAYPROS_MCH_NO, PPAYPROS_APP_ID et PPAYPROS_PRIVATE_KEY dans les Secrets.",
-    );
+function countrySecretNames(country: string) {
+  const suffix = country.trim().toUpperCase();
+  return {
+    merchantNo: `PPAYPROS_MCH_NO_${suffix}`,
+    appId: `PPAYPROS_APP_ID_${suffix}`,
+    privateKey: `PPAYPROS_PRIVATE_KEY_${suffix}`,
+  };
+}
+
+export function getPpayProsCredentialStatus(country: string) {
+  const normalizedCountry = country.trim().toUpperCase();
+  const names = countrySecretNames(normalizedCountry);
+  const countryValues = {
+    merchantNo: process.env[names.merchantNo]?.trim() || "",
+    appId: process.env[names.appId]?.trim() || "",
+    privateKey: process.env[names.privateKey]?.trim() || "",
+  };
+  const anyCountryValue = Object.values(countryValues).some(Boolean);
+  const completeCountryValues = Object.values(countryValues).every(Boolean);
+  const legacyValues = normalizedCountry === "BJ" ? {
+    merchantNo: process.env.PPAYPROS_MCH_NO?.trim() || "",
+    appId: process.env.PPAYPROS_APP_ID?.trim() || "",
+    privateKey: process.env.PPAYPROS_PRIVATE_KEY?.trim() || "",
+  } : null;
+
+  return {
+    configured: completeCountryValues || (
+      !anyCountryValue && !!legacyValues && Object.values(legacyValues).every(Boolean)
+    ),
+    secretNames: Object.values(names),
+    usesLegacyBeninSecrets: normalizedCountry === "BJ" &&
+      !anyCountryValue &&
+      !!legacyValues &&
+      Object.values(legacyValues).every(Boolean),
+  };
+}
+
+export function getPpayProsCredentials(country = "BJ"): PpayProsCredentials {
+  const normalizedCountry = country.trim().toUpperCase();
+  const names = countrySecretNames(normalizedCountry);
+  const countryValues = {
+    merchantNo: process.env[names.merchantNo]?.trim() || "",
+    appId: process.env[names.appId]?.trim() || "",
+    privateKey: process.env[names.privateKey]?.trim() || "",
+  };
+  const anyCountryValue = Object.values(countryValues).some(Boolean);
+  if (Object.values(countryValues).every(Boolean)) return countryValues;
+
+  // Keep the existing Benin setup working while moving other countries to
+  // isolated, country-specific Secrets.
+  if (normalizedCountry === "BJ" && !anyCountryValue) {
+    const legacyValues = {
+      merchantNo: process.env.PPAYPROS_MCH_NO?.trim() || "",
+      appId: process.env.PPAYPROS_APP_ID?.trim() || "",
+      privateKey: process.env.PPAYPROS_PRIVATE_KEY?.trim() || "",
+    };
+    if (Object.values(legacyValues).every(Boolean)) return legacyValues;
   }
-  return { merchantNo, appId, privateKey };
+
+  throw new Error(
+    `PPayPros n'est pas configuré pour ${normalizedCountry} : ajoutez ${names.merchantNo}, ${names.appId} et ${names.privateKey} dans les Secrets.`,
+  );
 }
 
 function signedValueString(params: Record<string, unknown>, privateKey: string): string {
@@ -85,11 +139,21 @@ export function toPpayProsAmount(amountXof: number): number {
 }
 
 export function formatPpayProsBeninPhone(phone: string): string {
-  const normalized = normalizeBeninPhone(phone);
+  const normalized = normalizePpayProsPhone("BJ", phone);
   if (!normalized) {
     throw new Error("Le numéro du Bénin doit commencer par 01 et contenir 10 chiffres.");
   }
   return normalized;
+}
+
+export function formatPpayProsPhone(country: string, phone: string): string {
+  const normalized = normalizePpayProsPhone(country, phone);
+  if (!normalized) throw new Error(getPpayProsPhoneError(country));
+  return normalized;
+}
+
+export function getPpayProsDefaultWayCode(country: string): string {
+  return PPAYPROS_COUNTRIES.find(({ code }) => code === country.trim().toUpperCase())?.wayCode || "";
 }
 
 export function createPpayProsMerchantOrderNo(kind: "payin" | "payout", recordId: number): string {
@@ -125,10 +189,11 @@ function parseResponseData(value: unknown): Record<string, unknown> {
 }
 
 async function postSigned(
+  country: string,
   endpoint: string,
   payload: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const credentials = getPpayProsCredentials();
+  const credentials = getPpayProsCredentials(country);
   const unsigned = {
     ...payload,
     mchNo: credentials.merchantNo,
@@ -176,6 +241,8 @@ async function postSigned(
 }
 
 export async function createPpayProsPayin(params: {
+  country: string;
+  wayCode: string;
   merchantOrderNo: string;
   amountXof: number;
   customerName: string;
@@ -184,13 +251,13 @@ export async function createPpayProsPayin(params: {
   notifyUrl: string;
   returnUrl: string;
 }): Promise<PpayProsPayinResult> {
-  const data = await postSigned("/api/pay/pay", {
+  const data = await postSigned(params.country, "/api/pay/pay", {
     mchOrderNo: params.merchantOrderNo,
     amount: toPpayProsAmount(params.amountXof),
     customerName: params.customerName,
     customerEmail: params.customerEmail,
-    customerPhone: formatPpayProsBeninPhone(params.customerPhone),
-    wayCode: "850",
+    customerPhone: formatPpayProsPhone(params.country, params.customerPhone),
+    wayCode: params.wayCode,
     notifyUrl: params.notifyUrl,
     returnUrl: params.returnUrl,
   });
@@ -198,35 +265,53 @@ export async function createPpayProsPayin(params: {
 }
 
 export async function createPpayProsPayout(params: {
+  country: string;
   merchantOrderNo: string;
   amountXof: number;
   accountName: string;
   accountNumber: string;
   accountPhone: string;
   accountEmail: string;
+  accountCode: string;
   notifyUrl: string;
 }): Promise<PpayProsPayoutResult> {
-  const accountNumber = formatPpayProsBeninPhone(params.accountNumber);
-  const data = await postSigned("/api/payout/pay", {
+  const accountNumber = formatPpayProsPhone(params.country, params.accountNumber);
+  const data = await postSigned(params.country, "/api/payout/pay", {
     mchOrderNo: params.merchantOrderNo,
     amount: toPpayProsAmount(params.amountXof),
     entryType: "BANK_CARD",
     accountNo: accountNumber,
-    accountCode: "Bank",
+    accountCode: params.accountCode,
     accountName: params.accountName,
     accountEmail: params.accountEmail,
-    accountPhone: formatPpayProsBeninPhone(params.accountPhone),
+    accountPhone: formatPpayProsPhone(params.country, params.accountPhone),
     notifyUrl: params.notifyUrl,
   });
   return data as PpayProsPayoutResult;
 }
 
+export async function queryPpayProsPayin(params: {
+  country: string;
+  merchantOrderNo: string;
+  payOrderId?: string | null;
+}): Promise<PpayProsPayinResult> {
+  const data = await postSigned(params.country, "/api/pay/query", params.payOrderId
+    ? { payOrderId: params.payOrderId }
+    : { mchOrderNo: params.merchantOrderNo });
+  return data as PpayProsPayinResult;
+}
+
 export async function queryPpayProsPayout(params: {
+  country: string;
   merchantOrderNo: string;
   transferId?: string | null;
 }): Promise<PpayProsPayoutResult> {
-  const data = await postSigned("/api/payout/query", params.transferId
+  const data = await postSigned(params.country, "/api/payout/query", params.transferId
     ? { transferId: params.transferId }
     : { mchOrderNo: params.merchantOrderNo });
   return data as PpayProsPayoutResult;
+}
+
+export async function getPpayProsBalance(country: string): Promise<Record<string, unknown>> {
+  return postSigned(country, "/api/payout/balance", {});
 }

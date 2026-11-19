@@ -11,7 +11,7 @@ import {
 import { Link, useLocation } from "wouter";
 import type { ApiCountry } from "@/lib/countries";
 import type { PaymentNumber } from "@shared/schema";
-import { normalizeBeninPhone } from "@shared/phone";
+import { getPpayProsPhoneError, normalizeBeninPhone, normalizePpayProsPhone } from "@shared/phone";
 import { getPaymentOperatorLogo } from "@/lib/payment-operator-logos";
 import EmptyState from "@/components/empty-state";
 import WithdrawalFloatingTools from "@/components/withdrawal-floating-tools";
@@ -121,9 +121,10 @@ export default function DepositPage() {
   const westpayAvailable = westpayEnabled && (
     !westpayCountries || westpayCountries.split(",").map(c => c.trim()).includes(country)
   );
-  const ppayprosAvailable =
-    country.toUpperCase() === "BJ" &&
-    platformSettings?.ppayprosPayinEnabled === "true";
+  const ppayprosAvailable = (platformSettings?.ppayprosPayinCountries || "")
+    .split(",")
+    .map((code) => code.trim().toUpperCase())
+    .includes(country.toUpperCase());
   const inpayEnabled = platformSettings?.inpayEnabled === "true";
   const inpayChannelName = platformSettings?.inpayChannelName || "InPay";
   const inpayCountries = platformSettings?.inpayCountries || "";
@@ -389,12 +390,13 @@ export default function DepositPage() {
 
   const ppayprosInitiateMutation = useMutation({
     mutationFn: async () => {
-      if (user?.country?.toUpperCase() !== "BJ") {
-        throw new Error("Ce paiement nécessite un compte enregistré au Bénin.");
+      const countryCode = country.trim().toUpperCase();
+      if (user?.country?.toUpperCase() !== countryCode) {
+        throw new Error("Le pays sélectionné doit correspondre au pays enregistré sur votre compte.");
       }
-      const customerPhone = normalizeBeninPhone(user?.phone);
+      const customerPhone = normalizePpayProsPhone(countryCode, user?.phone);
       if (!customerPhone) {
-        throw new Error("Le numéro béninois enregistré sur votre compte est invalide. Les 8 chiffres locaux sont complétés avec 01.");
+        throw new Error(getPpayProsPhoneError(countryCode));
       }
       const res = await apiRequest("POST", "/api/deposits", {
         amount: Number(amount),

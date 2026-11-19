@@ -39,7 +39,10 @@ export default function AdminWithdrawals() {
   const { data: platformSettings } = useQuery<Record<string, string>>({
     queryKey: ["/api/settings"],
   });
-  const ppayprosPayoutEnabled = platformSettings?.ppayprosPayoutEnabled === "true";
+  const ppayprosPayoutCountries = (platformSettings?.ppayprosPayoutCountries || "")
+    .split(",")
+    .map((code) => code.trim().toUpperCase())
+    .filter(Boolean);
   const drimpayPayoutCountries = (platformSettings?.drimpayPayoutCountries || "")
     .split(",")
     .map((code) => code.trim().toUpperCase())
@@ -336,7 +339,7 @@ export default function AdminWithdrawals() {
                         ? <Loader2 className="w-4 h-4 animate-spin" />
                         : <><Send className="w-4 h-4 mr-1" /> Envoyer à InPay</>}
                     </Button>
-                    {ppayprosPayoutEnabled && withdrawal.country.trim().toUpperCase() === "BJ" && (
+                    {ppayprosPayoutCountries.includes(withdrawal.country.trim().toUpperCase()) && (
                       <Button
                         size="sm"
                         variant="outline"

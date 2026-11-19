@@ -14,7 +14,7 @@
 - [InPay callback classification](inpay-callbacks.md) — InPay payin and payout callbacks can both include order_number; classify using the merchant reference prefix first.
 - [InPay IP whitelist](inpay-ip-whitelist.md) — InPay rejects API calls with errno 5 until the server's public egress IP is whitelisted.
 - [AshtechPay integration](ashtechpay-burkina.md) — Use the AshTech profile ID bound to the Bearer key, not the app customer's ID.
-- [PPayPros live validation](ppaypros-live-validation.md) — Keep payin/payout disabled until the XOF amount scale and mobile-wallet payout compatibility are verified with the merchant.
+- [PPayPros country setup](ppaypros-live-validation.md) — Use country-specific credentials and number formats; confirm amount units and wallet payout mappings before live activation.
 - [Toast appearance](toast-notifications.md) — Use the same compact, centered charcoal toast on every route; copy and authentication feedback share it, including RobotPay.
 - [Floating shortcut icons](floating-quick-action-icons.md) — Their glyphs are transparent cutouts; use a contrasting button background so they stay visible.
 - [Transaction history rules](transaction-history-rules.md) — User histories omit provider names; deposits show no fees; admins search by the shared `deqmsll` order number.

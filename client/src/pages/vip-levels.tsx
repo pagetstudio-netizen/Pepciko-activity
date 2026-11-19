@@ -111,11 +111,11 @@ export default function VipLevelsPage() {
                     </div>
                     <div className="vip-level-inner">
                       <p>
-                        Pour passer au niveau VIP{item.level}, il faut cumuler le montant indiqué :{" "}
+                        Accédez au niveau VIP {item.level} dès que votre cumul atteint{" "}
                         <strong>{formatFcfa(item.thresholdFcfa)}</strong>.
                       </p>
                       <div className="vip-progress-label">
-                        <span>Montant cumulé</span>
+                        <span>Votre progression</span>
                         <span><b>{formatFcfa(item.progressFcfa)}</b> / {formatFcfa(item.thresholdFcfa)}</span>
                       </div>
                       <div

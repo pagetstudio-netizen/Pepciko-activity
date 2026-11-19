@@ -12,7 +12,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Save, Link, Clock, Users, Zap } from "lucide-react";
+import { Loader2, Save, Link, Clock, Users, Zap, RefreshCw } from "lucide-react";
+import { PPAYPROS_COUNTRIES } from "@shared/ppaypros";
 
 const NETWORKS = [
   { value: "telegram", label: "Telegram" },
@@ -84,6 +85,18 @@ const settingsSchema = z.object({
   westpayWebhookSecret: z.string(),
   ppayprosPayinEnabled: z.boolean(),
   ppayprosPayoutEnabled: z.boolean(),
+  ppayprosPayinCountries: z.string(),
+  ppayprosPayoutCountries: z.string(),
+  ppayprosWayCode_BJ: z.string(),
+  ppayprosWayCode_TG: z.string(),
+  ppayprosWayCode_CI: z.string(),
+  ppayprosWayCode_CM: z.string(),
+  ppayprosWayCode_BF: z.string(),
+  ppayprosPayoutAccountCode_BJ: z.string(),
+  ppayprosPayoutAccountCode_TG: z.string(),
+  ppayprosPayoutAccountCode_CI: z.string(),
+  ppayprosPayoutAccountCode_CM: z.string(),
+  ppayprosPayoutAccountCode_BF: z.string(),
   ashtechEnabled: z.boolean(),
   ashtechChannelName: z.string().min(1, "Nom requis"),
   ashtechCountries: z.string(),
@@ -111,6 +124,29 @@ const settingsSchema = z.object({
 
 type SettingsForm = z.infer<typeof settingsSchema>;
 
+type PpayProsCountryConfiguration = {
+  code: string;
+  name: string;
+  phoneFormatSupported: boolean;
+  credentials: {
+    configured: boolean;
+    secretNames: string[];
+    usesLegacyBeninSecrets: boolean;
+  };
+  wayCode: string;
+  payinEnabled: boolean;
+  payoutEnabled: boolean;
+  payoutAccountCode: string;
+};
+
+type PpayProsBalance = {
+  country: string;
+  collectionBalance: number | string | null;
+  payoutBalance: number | string | null;
+  frozenBalance: number | string | null;
+  unit: string;
+};
+
 interface AdminSettingsProps {
   isSuperAdmin: boolean;
 }
@@ -120,6 +156,24 @@ export default function AdminSettings({ isSuperAdmin }: AdminSettingsProps) {
 
   const { data: settings, isLoading } = useQuery<Record<string, string>>({
     queryKey: ["/api/admin/settings"],
+  });
+  const { data: ppayprosConfiguration } = useQuery<{ countries: PpayProsCountryConfiguration[] }>({
+    queryKey: ["/api/admin/ppaypros/configuration"],
+  });
+  const [ppayprosBalances, setPpayprosBalances] = useState<Record<string, PpayProsBalance>>({});
+  const ppayprosBalanceMutation = useMutation({
+    mutationFn: async (country: string) => {
+      const response = await fetch(`/api/admin/ppaypros/balance/${country}`, { credentials: "include" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Impossible de consulter le solde PPayPros.");
+      return data as PpayProsBalance;
+    },
+    onSuccess: (balance) => {
+      setPpayprosBalances((current) => ({ ...current, [balance.country]: balance }));
+    },
+    onError: (error: any) => {
+      toast({ title: "Erreur PPayPros", description: error.message, variant: "destructive" });
+    },
   });
 
   const form = useForm<SettingsForm>({
@@ -161,6 +215,12 @@ export default function AdminSettings({ isSuperAdmin }: AdminSettingsProps) {
       westpayWebhookSecret: "",
       ppayprosPayinEnabled: false,
       ppayprosPayoutEnabled: false,
+      ppayprosPayinCountries: "",
+      ppayprosPayoutCountries: "",
+      ...Object.fromEntries(PPAYPROS_COUNTRIES.flatMap(({ code, wayCode, payoutAccountCode }) => [
+        [`ppayprosWayCode_${code}`, wayCode],
+        [`ppayprosPayoutAccountCode_${code}`, payoutAccountCode],
+      ])),
       ashtechEnabled: true,
       ashtechChannelName: "AshtechPay",
       ashtechCountries: "BF,TG,CM,BJ",
@@ -211,6 +271,14 @@ export default function AdminSettings({ isSuperAdmin }: AdminSettingsProps) {
         westpayWebhookSecret: settings.westpayWebhookSecret || "",
         ppayprosPayinEnabled: settings.ppayprosPayinEnabled === "true",
         ppayprosPayoutEnabled: settings.ppayprosPayoutEnabled === "true",
+        ppayprosPayinCountries: settings.ppayprosPayinCountries ??
+          (settings.ppayprosPayinEnabled === "true" ? "BJ" : ""),
+        ppayprosPayoutCountries: settings.ppayprosPayoutCountries ??
+          (settings.ppayprosPayoutEnabled === "true" ? "BJ" : ""),
+        ...Object.fromEntries(PPAYPROS_COUNTRIES.flatMap(({ code, wayCode, payoutAccountCode }) => [
+          [`ppayprosWayCode_${code}`, settings[`ppayprosWayCode_${code}`] ?? wayCode],
+          [`ppayprosPayoutAccountCode_${code}`, settings[`ppayprosPayoutAccountCode_${code}`] ?? payoutAccountCode],
+        ])),
         sendavapayEnabled: settings.sendavapayEnabled === "true",
         sendavapayChannelName: settings.sendavapayChannelName || "SendavaPay",
         sendavapayWebhookSecret: settings.sendavapayWebhookSecret || "",
@@ -258,6 +326,7 @@ export default function AdminSettings({ isSuperAdmin }: AdminSettingsProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/ppaypros/configuration"] });
       queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/settings/withdrawal"] });
       queryClient.invalidateQueries({ queryKey: ["/api/settings/links"] });
@@ -693,43 +762,141 @@ export default function AdminSettings({ isSuperAdmin }: AdminSettingsProps) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <Zap className="w-5 h-5 text-emerald-600" />
-              PPayPros — Bénin
+              PPayPros — Configuration par pays
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-xl border p-3">
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Activer les dépôts PPayPros</p>
-                <p className="text-xs text-gray-500">Affiche PPayPros au Bénin et redirige le client vers le lien de paiement retourné par l’API.</p>
-              </div>
-              <FormField control={form.control} name="ppayprosPayinEnabled" render={({ field }) => (
-                <FormItem className="flex items-center gap-2 space-y-0">
-                  <FormLabel className="text-xs text-gray-500">{field.value ? "Actif" : "Désactivé"}</FormLabel>
-                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                </FormItem>
-              )} />
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 space-y-1">
+              <p className="font-semibold">Sécurité des opérations réelles</p>
+              <p>N’activez pas les dépôts ou retraits réels avant confirmation par le fournisseur de l’échelle de montant FCFA/XAF et des codes de retrait mobile pour chaque pays.</p>
+              <p>Le Burkina Faso n’a pas de code de dépôt publié dans la documentation consultée; configurez-le uniquement après confirmation PPayPros.</p>
             </div>
-            <div className="flex items-center justify-between rounded-xl border p-3">
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Activer les retraits PPayPros</p>
-                <p className="text-xs text-gray-500">Ajoute l’envoi manuel à PPayPros pour les retraits béninois en attente.</p>
-              </div>
-              <FormField control={form.control} name="ppayprosPayoutEnabled" render={({ field }) => (
-                <FormItem className="flex items-center gap-2 space-y-0">
-                  <FormLabel className="text-xs text-gray-500">{field.value ? "Actif" : "Désactivé"}</FormLabel>
-                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                </FormItem>
-              )} />
+
+            <div className="space-y-3">
+              {PPAYPROS_COUNTRIES.map(({ code, name, wayCode, payoutAccountCode }) => {
+                const providerConfig = ppayprosConfiguration?.countries.find((entry) => entry.code === code);
+                const balance = ppayprosBalances[code];
+                const canEnablePayin = Boolean(
+                  providerConfig?.credentials.configured &&
+                  providerConfig.phoneFormatSupported &&
+                  providerConfig.wayCode,
+                );
+                const canEnablePayout = Boolean(
+                  providerConfig?.credentials.configured &&
+                  providerConfig.phoneFormatSupported &&
+                  providerConfig.payoutAccountCode,
+                );
+                const payinFieldName = "ppayprosPayinCountries" as const;
+                const payoutFieldName = "ppayprosPayoutCountries" as const;
+                return (
+                  <div key={code} className="rounded-xl border p-3 sm:p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-sm">{name} <span className="text-muted-foreground">({code})</span></p>
+                        <p className={`text-xs mt-1 ${providerConfig?.credentials.configured ? "text-emerald-700" : "text-amber-700"}`}>
+                          {providerConfig?.credentials.configured
+                            ? providerConfig.credentials.usesLegacyBeninSecrets
+                              ? "Identifiants détectés (anciens Secrets Bénin)"
+                              : "Identifiants détectés dans les Secrets"
+                            : "Identifiants PPayPros non configurés"}
+                        </p>
+                      {providerConfig && !providerConfig.phoneFormatSupported && (
+                        <p className="text-xs text-red-700 mt-1">
+                          Le format du numéro et le code de dépôt PPayPros pour ce pays doivent être confirmés avant activation.
+                        </p>
+                      )}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => ppayprosBalanceMutation.mutate(code)}
+                        disabled={!providerConfig?.credentials.configured || ppayprosBalanceMutation.isPending}
+                      >
+                        {ppayprosBalanceMutation.isPending && ppayprosBalanceMutation.variables === code
+                          ? <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                          : <RefreshCw className="w-4 h-4 mr-1" />}
+                        Consulter le solde
+                      </Button>
+                    </div>
+
+                    <p className="text-[11px] text-muted-foreground break-words">
+                      Secrets requis : <code>PPAYPROS_MCH_NO_{code}</code>, <code>PPAYPROS_APP_ID_{code}</code>, <code>PPAYPROS_PRIVATE_KEY_{code}</code>
+                    </p>
+
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <FormField control={form.control} name={payinFieldName} render={({ field }) => {
+                        const enabled = field.value.split(",").map((value) => value.trim().toUpperCase()).includes(code);
+                        return (
+                          <FormItem className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2">
+                            <FormLabel className="text-xs font-medium">Dépôts PPayPros</FormLabel>
+                            <FormControl>
+                              <Switch
+                                checked={enabled}
+                                disabled={!enabled && !canEnablePayin}
+                                onCheckedChange={(checked) => {
+                                  const next = new Set(field.value.split(",").map((value) => value.trim().toUpperCase()).filter(Boolean));
+                                  checked ? next.add(code) : next.delete(code);
+                                  field.onChange(Array.from(next).join(","));
+                                }}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        );
+                      }} />
+                      <FormField control={form.control} name={payoutFieldName} render={({ field }) => {
+                        const enabled = field.value.split(",").map((value) => value.trim().toUpperCase()).includes(code);
+                        return (
+                          <FormItem className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2">
+                            <FormLabel className="text-xs font-medium">Retraits PPayPros</FormLabel>
+                            <FormControl>
+                              <Switch
+                                checked={enabled}
+                                disabled={!enabled && !canEnablePayout}
+                                onCheckedChange={(checked) => {
+                                  const next = new Set(field.value.split(",").map((value) => value.trim().toUpperCase()).filter(Boolean));
+                                  checked ? next.add(code) : next.delete(code);
+                                  field.onChange(Array.from(next).join(","));
+                                }}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        );
+                      }} />
+
+                      <FormField control={form.control} name={`ppayprosWayCode_${code}` as keyof SettingsForm} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Code de dépôt (wayCode)</FormLabel>
+                          <FormControl>
+                            <Input {...field} value={String(field.value ?? "")} placeholder={wayCode || "À confirmer par PPayPros"} />
+                          </FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name={`ppayprosPayoutAccountCode_${code}` as keyof SettingsForm} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Code de retrait (accountCode)</FormLabel>
+                          <FormControl>
+                            <Input {...field} value={String(field.value ?? "")} placeholder={payoutAccountCode || (code === "CM" ? "ORANGE ou MTN" : "À confirmer par PPayPros")} />
+                          </FormControl>
+                        </FormItem>
+                      )} />
+                    </div>
+
+                    {balance && (
+                      <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                        <p>Collecte : <b>{balance.collectionBalance ?? "—"}</b> · Retrait : <b>{balance.payoutBalance ?? "—"}</b> · Gelé : <b>{balance.frozenBalance ?? "—"}</b> {balance.unit}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
+
             <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-xs text-emerald-800 space-y-1">
-              <p className="font-semibold">Configuration requise dans les Secrets :</p>
-              <p>• <code className="bg-emerald-100 px-1 rounded">PPAYPROS_MCH_NO</code> — numéro marchand</p>
-              <p>• <code className="bg-emerald-100 px-1 rounded">PPAYPROS_APP_ID</code> — identifiant de l’application</p>
-              <p>• <code className="bg-emerald-100 px-1 rounded">PPAYPROS_PRIVATE_KEY</code> — clé privée de signature</p>
-              <p>Callbacks à configurer côté PPayPros :</p>
-              <p>• <code className="bg-emerald-100 px-1 rounded">/api/webhooks/ppaypros/payin</code></p>
-              <p>• <code className="bg-emerald-100 px-1 rounded">/api/webhooks/ppaypros/payout</code></p>
-              <p className="font-semibold text-red-600 mt-1">Les identifiants ne sont jamais enregistrés dans les paramètres du panel.</p>
+              <p className="font-semibold">Callbacks à configurer dans chaque application PPayPros :</p>
+              <p>Dépôt : <code className="bg-emerald-100 px-1 rounded">/api/webhooks/ppaypros/payin</code></p>
+              <p>Retrait : <code className="bg-emerald-100 px-1 rounded">/api/webhooks/ppaypros/payout</code></p>
+              <p>Les clés privées restent dans les Secrets Replit; elles ne sont jamais enregistrées dans les paramètres du panneau.</p>
             </div>
           </CardContent>
         </Card>
