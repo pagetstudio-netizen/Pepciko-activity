@@ -11,7 +11,7 @@ import {
 import { Link, useLocation } from "wouter";
 import type { ApiCountry } from "@/lib/countries";
 import type { PaymentNumber } from "@shared/schema";
-import { getPpayProsPhoneError, normalizeBeninPhone, normalizePpayProsPhone } from "@shared/phone";
+import { getPpayProsPhoneError, normalizePpayProsPhone } from "@shared/phone";
 import { getPaymentOperatorLogo } from "@/lib/payment-operator-logos";
 import EmptyState from "@/components/empty-state";
 import WithdrawalFloatingTools from "@/components/withdrawal-floating-tools";
@@ -655,18 +655,18 @@ export default function DepositPage() {
       return;
     }
     if (ppayprosAvailable) {
-      if (user?.country?.toUpperCase() !== "BJ") {
+      if (user?.country?.trim().toUpperCase() !== country.trim().toUpperCase()) {
         toast({
-          title: "Compte non béninois",
-          description: "Le paiement utilise le numéro béninois enregistré sur le compte.",
+          title: "Pays du compte différent",
+          description: "Le dépôt PPayPros utilise le numéro enregistré pour le pays du compte.",
           variant: "destructive",
         });
         return;
       }
-      if (!normalizeBeninPhone(user?.phone)) {
+      if (!normalizePpayProsPhone(country, user?.phone)) {
         toast({
           title: "Numéro du compte invalide",
-          description: "Le numéro enregistré doit être un numéro béninois; les 8 chiffres locaux sont complétés automatiquement avec 01.",
+          description: getPpayProsPhoneError(country),
           variant: "destructive",
         });
         return;
