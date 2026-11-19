@@ -5,9 +5,9 @@ export const JOHN_DEERE_PRODUCT_CATALOG = [
   {
     name: "Buy to become VIP1",
     price: 3000,
-    dailyEarnings: 430,
+    dailyEarnings: 500,
     cycleDays: 90,
-    totalReturn: 38700,
+    totalReturn: 45000,
     sortOrder: 1,
     imageUrl: PRODUCT_IMAGE_URL,
   },

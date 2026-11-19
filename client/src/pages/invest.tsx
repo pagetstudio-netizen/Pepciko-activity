@@ -207,6 +207,7 @@ export default function InvestPage() {
               const wellnessLocked = product.productType === "wellness" && product.canPurchaseWellness === false;
               const daily = Number(product.dailyEarnings || 0);
               const total = Number(product.totalReturn || daily * Number(product.cycleDays || 90));
+              const isMaturityProduct = product.productType === "activity";
               const totalRevenue = product.productType === "wellness"
                 ? getWellnessCardTotalRevenue(Number(product.price), total)
                 : total;
@@ -241,8 +242,12 @@ export default function InvestPage() {
                       <strong>{formatFcfa(product.productType === "activity" ? total : daily)}</strong>
                       <span>Revenu</span>
                       <strong>{duration} jours</strong>
-                      <span>Revenu total</span>
-                      <strong>{formatFcfa(totalRevenue)}</strong>
+                      {product.productType !== "stable" && (
+                        <>
+                          <span>Revenu total</span>
+                          <strong>{formatFcfa(totalRevenue)}</strong>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -369,10 +374,12 @@ export default function InvestPage() {
                   <dt>Revenu</dt>
                   <dd>{duration} jours</dd>
                 </div>
-                <div className="invest-modal-row">
-                  <dt>Revenu total</dt>
-                  <dd>{formatFcfa(total * purchaseQuantity)}</dd>
-                </div>
+                {confirmProduct.productType !== "stable" && (
+                  <div className="invest-modal-row">
+                    <dt>Revenu total</dt>
+                    <dd>{formatFcfa(total * purchaseQuantity)}</dd>
+                  </div>
+                )}
                 <div className="invest-modal-row invest-quantity-row">
                   <dt>Quantité d’achat</dt>
                   <dd>

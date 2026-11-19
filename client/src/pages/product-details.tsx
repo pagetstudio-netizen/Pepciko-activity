@@ -164,10 +164,12 @@ export default function ProductDetailsPage() {
               <span>{product.isFree ? "Bonus quotidien :" : "Gain journalier calculé :"}</span>
               <strong>{formatFcfa(dailyEarnings)}</strong>
             </div>
-            <div className="product-detail-metric-row">
-              <span>{product.isFree ? "Gain total :" : "Gain total à l’échéance :"}</span>
-              <strong>{formatFcfa(totalReturn)}</strong>
-            </div>
+            {product.productType !== "stable" && (
+              <div className="product-detail-metric-row">
+                <span>{product.isFree ? "Gain total :" : "Gain total à l’échéance :"}</span>
+                <strong>{formatFcfa(totalReturn)}</strong>
+              </div>
+            )}
             <div className="product-detail-metric-row">
               <span>Cycle :</span>
               <strong>{cycleDays} {cycleDays === 1 ? "jour" : "jours"}</strong>
