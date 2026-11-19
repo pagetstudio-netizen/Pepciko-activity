@@ -22,6 +22,12 @@ const testSecretNames = [
   "PPAYPROS_MCH_NO_TG",
   "PPAYPROS_APP_ID_TG",
   "PPAYPROS_PRIVATE_KEY_TG",
+  "PPAYPROS_MCH_NO_CI",
+  "PPAYPROS_APP_ID_CI",
+  "PPAYPROS_PRIVATE_KEY_CI",
+  "PPAYPROS_MCH_NO_CM",
+  "PPAYPROS_APP_ID_CM",
+  "PPAYPROS_PRIVATE_KEY_CM",
   "PPAYPROS_MCH_NO_BJ",
   "PPAYPROS_APP_ID_BJ",
   "PPAYPROS_PRIVATE_KEY_BJ",
@@ -52,6 +58,8 @@ test("normalizes only the registered country's documented PPayPros phone format"
   assert.equal(normalizePpayProsPhone("CM", "0670123456"), "0670123456");
   assert.equal(normalizePpayProsPhone("BF", "70123456"), null);
   assert.equal(formatPpayProsPhone("TG", "90123456"), "90123456");
+  assert.equal(formatPpayProsPhone("CI", "+225 01 23 45 67 89"), "0123456789");
+  assert.equal(formatPpayProsPhone("CM", "+237 6 70 12 34 56"), "670123456");
   assert.equal(normalizeBeninPhone("22912345"), "0122912345");
   assert.equal(normalizeBeninPhone("+229 01 99 35 67 39"), "0199356739");
 });
@@ -130,6 +138,70 @@ test("uses the selected country's payin code, phone, amount units, and credentia
   }
 });
 
+test("sends Côte d'Ivoire and Cameroon payins with their own phone formats", async () => {
+  const cases = [
+    {
+      country: "CI",
+      merchantNo: "merchant-ci-test",
+      appId: "app-ci-test",
+      privateKey: "private-ci-test",
+      phone: "+225 01 23 45 67 89",
+      expectedPhone: "0123456789",
+      wayCode: "837",
+    },
+    {
+      country: "CM",
+      merchantNo: "merchant-cm-test",
+      appId: "app-cm-test",
+      privateKey: "private-cm-test",
+      phone: "+237 6 70 12 34 56",
+      expectedPhone: "670123456",
+      wayCode: "890",
+    },
+  ];
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({
+      url: String(input),
+      body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+    });
+    return new Response(JSON.stringify({
+      code: 0,
+      data: { mchOrderNo: "PPIN-43", payDataType: "payUrl", payData: "https://checkout.example.test/pay" },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    for (const [index, testCase] of cases.entries()) {
+      process.env[`PPAYPROS_MCH_NO_${testCase.country}`] = testCase.merchantNo;
+      process.env[`PPAYPROS_APP_ID_${testCase.country}`] = testCase.appId;
+      process.env[`PPAYPROS_PRIVATE_KEY_${testCase.country}`] = testCase.privateKey;
+      assert.equal(getPpayProsDefaultWayCode(testCase.country), testCase.wayCode);
+      await createPpayProsPayin({
+        country: testCase.country,
+        wayCode: testCase.wayCode,
+        merchantOrderNo: `PPIN-${43 + index}`,
+        amountXof: 3000,
+        customerName: "Test User",
+        customerPhone: testCase.phone,
+        customerEmail: "test@example.test",
+        notifyUrl: "https://app.example.test/api/webhooks/ppaypros/payin",
+        returnUrl: "https://app.example.test/deposit",
+      });
+    }
+
+    for (const [index, testCase] of cases.entries()) {
+      assert.equal(requests[index].url, "https://pay.ppaypros.com/api/pay/pay");
+      assert.equal(requests[index].body.mchNo, testCase.merchantNo);
+      assert.equal(requests[index].body.appId, testCase.appId);
+      assert.equal(requests[index].body.customerPhone, testCase.expectedPhone);
+      assert.equal(requests[index].body.wayCode, testCase.wayCode);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("queries country-specific provider balance with signed credentials", async () => {
   process.env.PPAYPROS_MCH_NO_TG = "merchant-tg-test";
   process.env.PPAYPROS_APP_ID_TG = "app-tg-test";
@@ -152,6 +224,65 @@ test("queries country-specific provider balance with signed credentials", async 
     assert.equal(requestBody.appId, "app-tg-test");
     assert.equal(balance.balance, 12500);
     assert.equal(balance.payoutBalance, 8400);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("formats Togo and Côte d'Ivoire payout accounts using the selected country", async () => {
+  const cases = [
+    {
+      country: "TG",
+      merchantNo: "merchant-tg-test",
+      appId: "app-tg-test",
+      privateKey: "private-tg-test",
+      accountNumber: "+228 90 12 34 56",
+      accountPhone: "22890123456",
+      expectedPhone: "90123456",
+    },
+    {
+      country: "CI",
+      merchantNo: "merchant-ci-test",
+      appId: "app-ci-test",
+      privateKey: "private-ci-test",
+      accountNumber: "+225 01 23 45 67 89",
+      accountPhone: "0123456789",
+      expectedPhone: "0123456789",
+    },
+  ];
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ body: Record<string, unknown> }> = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    requests.push({ body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown> });
+    return new Response(JSON.stringify({
+      code: 0,
+      data: { mchOrderNo: "PPOUT-22", state: 1 },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    for (const testCase of cases) {
+      process.env[`PPAYPROS_MCH_NO_${testCase.country}`] = testCase.merchantNo;
+      process.env[`PPAYPROS_APP_ID_${testCase.country}`] = testCase.appId;
+      process.env[`PPAYPROS_PRIVATE_KEY_${testCase.country}`] = testCase.privateKey;
+      await createPpayProsPayout({
+        country: testCase.country,
+        merchantOrderNo: "PPOUT-22",
+        amountXof: 2500,
+        accountName: "Test User",
+        accountNumber: testCase.accountNumber,
+        accountPhone: testCase.accountPhone,
+        accountEmail: "test@example.test",
+        accountCode: "TEST-OPERATOR",
+        notifyUrl: "https://app.example.test/api/webhooks/ppaypros/payout",
+      });
+    }
+
+    for (const [index, testCase] of cases.entries()) {
+      assert.equal(requests[index].body.mchNo, testCase.merchantNo);
+      assert.equal(requests[index].body.appId, testCase.appId);
+      assert.equal(requests[index].body.accountNo, testCase.expectedPhone);
+      assert.equal(requests[index].body.accountPhone, testCase.expectedPhone);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

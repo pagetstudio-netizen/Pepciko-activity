@@ -19,6 +19,7 @@ import WithdrawalFloatingTools from "@/components/withdrawal-floating-tools";
 const TON_GREEN = "#367C2B";
 const TON_GREEN_DARK = "#25591C";
 const TON_GRADIENT = `linear-gradient(112deg, ${TON_GREEN} 0%, ${TON_GREEN_DARK} 100%)`;
+const DEPOSIT_ERROR_MESSAGE = "Impossible de traiter le dépôt. Réessayez ou contactez le service client.";
 
 type Step =
   | "amount"
@@ -329,7 +330,7 @@ export default function DepositPage() {
       setPaymentMessage("");
       setReference("");
     },
-    onError: (e: any) => toast({ title: "Erreur", description: e.message, variant: "destructive" }),
+    onError: () => toast({ title: "Erreur de dépôt", description: DEPOSIT_ERROR_MESSAGE, variant: "destructive" }),
   });
 
   // WestPay: create deposit + get redirect URL
@@ -346,7 +347,7 @@ export default function DepositPage() {
       // clean URL
       window.history.replaceState({}, "", "/deposit");
       if (s === "success") {
-        toast({ title: "Paiement en cours de confirmation", description: "Votre dépôt sera crédité dès confirmation WestPay." });
+        toast({ title: "Paiement en cours de confirmation", description: "Votre dépôt sera crédité dès confirmation." });
         queryClient.invalidateQueries({ queryKey: ["/api/deposits/history"] });
       }
     }
@@ -385,7 +386,7 @@ export default function DepositPage() {
         window.location.href = data.westpayUrl;
       }
     },
-    onError: (e: any) => toast({ title: "Erreur WestPay", description: e.message, variant: "destructive" }),
+    onError: () => toast({ title: "Erreur de paiement", description: DEPOSIT_ERROR_MESSAGE, variant: "destructive" }),
   });
 
   const ppayprosInitiateMutation = useMutation({
@@ -426,14 +427,9 @@ export default function DepositPage() {
     },
     onError: (error: any) => {
       const signatureRejected = /signature verification failed/i.test(String(error.message || ""));
-      const providerNamedError = /ppaypros/i.test(String(error.message || ""));
       toast({
         title: signatureRejected ? "Paiement refusé" : "Erreur de paiement",
-        description: signatureRejected
-          ? "Une erreur de configuration a empêché le paiement. Réessayez plus tard ou contactez le service client."
-          : providerNamedError
-            ? "Impossible de préparer le paiement. Réessayez ou contactez le service client."
-            : error.message,
+        description: DEPOSIT_ERROR_MESSAGE,
         variant: "destructive",
       });
     },
@@ -460,7 +456,7 @@ export default function DepositPage() {
         window.location.href = data.inpayUrl;
       }
     },
-    onError: (e: any) => toast({ title: `Erreur ${inpayChannelName}`, description: e.message, variant: "destructive" }),
+    onError: () => toast({ title: "Erreur de paiement", description: DEPOSIT_ERROR_MESSAGE, variant: "destructive" }),
   });
 
   const ashtechCollectMutation = useMutation({
@@ -504,7 +500,7 @@ export default function DepositPage() {
         setStep("ashtech-otp");
         return;
       }
-      toast({ title: `Erreur ${ashtechChannelName}`, description: e.message, variant: "destructive" });
+      toast({ title: "Erreur de paiement", description: DEPOSIT_ERROR_MESSAGE, variant: "destructive" });
     },
   });
 
@@ -564,10 +560,10 @@ export default function DepositPage() {
         setSvPolling(true);
         setStep("sv-waiting");
       } else {
-        toast({ title: "Erreur", description: data.error || data.message || "Erreur paiement", variant: "destructive" });
+        toast({ title: "Erreur de paiement", description: DEPOSIT_ERROR_MESSAGE, variant: "destructive" });
       }
     },
-    onError: (e: any) => toast({ title: "Erreur", description: e.message, variant: "destructive" }),
+    onError: () => toast({ title: "Erreur de paiement", description: DEPOSIT_ERROR_MESSAGE, variant: "destructive" }),
   });
 
   // SendavaPay: retry failed payment
@@ -593,7 +589,7 @@ export default function DepositPage() {
       setStep("sv-operator");
       toast({ title: "Prêt à réessayer", description: "Sélectionnez un opérateur et relancez le paiement." });
     },
-    onError: (e: any) => toast({ title: "Erreur retry", description: e.message, variant: "destructive" }),
+    onError: () => toast({ title: "Erreur de paiement", description: DEPOSIT_ERROR_MESSAGE, variant: "destructive" }),
   });
 
   // SendavaPay: submit OTP
@@ -613,7 +609,7 @@ export default function DepositPage() {
       setSvPolling(true);
       setStep("sv-waiting");
     },
-    onError: (e: any) => toast({ title: "Erreur OTP", description: e.message, variant: "destructive" }),
+    onError: () => toast({ title: "Erreur de paiement", description: DEPOSIT_ERROR_MESSAGE, variant: "destructive" }),
   });
 
   const handleAmountNext = () => {
@@ -630,7 +626,7 @@ export default function DepositPage() {
       (!Number.isInteger(Number(amount)) || Number(amount) % 5 !== 0)
     ) {
       toast({
-        title: "Montant InPay invalide",
+        title: "Montant invalide",
         description: "Utilisez un montant entier multiple de 5 : 300, 305, 310…",
         variant: "destructive",
       });
@@ -658,7 +654,7 @@ export default function DepositPage() {
       if (user?.country?.trim().toUpperCase() !== country.trim().toUpperCase()) {
         toast({
           title: "Pays du compte différent",
-          description: "Le dépôt PPayPros utilise le numéro enregistré pour le pays du compte.",
+          description: "Le dépôt utilise le numéro enregistré pour le pays du compte.",
           variant: "destructive",
         });
         return;

@@ -5,7 +5,7 @@
 - [Plesk GitHub deployment](plesk-github-deployment.md) — Plesk pulls a committed dist build and starts dist/index.cjs relative to the application root.
 - [Login privacy](login-privacy.md) — Do not persist passwords or phone numbers in browser storage; privacy scans classify remembered phone numbers as sensitive.
 - [Brand theme isolation](brand-theme-isolation.md) — Use the user's PepsiCo identity and preserve RobotPay’s separate theme.
-- [Dashboard language and catalog](dashboard-language-and-catalog.md) — French/FCFA, real catalog, protected Blog publishing, and unchanged browser chrome.
+- [Dashboard language and catalog](dashboard-language-and-catalog.md) — French/FCFA, dynamic countries, provider-neutral deposit toasts, real catalog, and protected Blog publishing.
 - [Home dashboard card sizing](home-dashboard-card-sizing.md) — Shorten content cards only; preserve quick-action buttons/icons and the page header.
 - [Support center design](support-center-design.md) — Keep the help center and deposit-report form aligned with the user’s supplied pink screenshots.
 - [Account card proportions](account-card-dimensions.md) — Preserve the account cards’ original width; shorten VIP, business, and services cards vertically.
@@ -25,7 +25,7 @@
 - [Screenshot artwork extraction](screenshot-artwork-extraction.md) — Crop distinctive artwork from original captures, isolate its silhouette, and animate surrounding layers separately.
 - [Fortune wheel artwork](fortune-wheel-artwork.md) — Use the real wheel artwork from the user’s reference instead of CSS-drawn coin or GO graphics.
 - [Fortune wheel turns](fortune-wheel-spins.md) — Preserve server-side eligibility and payout rules; use the original screenshot’s wording on the game page.
-- [Withdrawal account editing](withdrawal-account-editing.md) — Each user has one editable primary withdrawal account; keep operators sourced from Admin-configured countries.
+- [Withdrawal account editing](withdrawal-account-editing.md) — One editable account per user; country/operator records stay Admin-managed, not hard-coded or seeded.
 - [Payment operator logos](payment-operator-logos.md) — Use the user-supplied operator marks across payment selectors; preserve Admin-configured logos when present.
 - [Activity product launch clocks](activity-product-launch-clocks.md) — TG, BF, and CI share local time; BJ, CM, and NE launch one hour ahead.
 - [Activity product purchase rules](activity-product-purchase-rules.md) — Require a paid stable purchase and cap activity price at the highest single stable purchase; enforce stock and launch limits.
