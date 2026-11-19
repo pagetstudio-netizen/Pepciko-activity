@@ -39,7 +39,7 @@ export default function WalletPage() {
   // list should never be shown, including on /wallet?from=withdrawal.
   const showForm = true;
 
-  const { data: apiCountries = [] } = useQuery<ApiCountry[]>({
+  const { data: apiCountries = [], isLoading: countriesLoading, isError: countriesError } = useQuery<ApiCountry[]>({
     queryKey: ["/api/countries"],
   });
 
@@ -253,10 +253,14 @@ export default function WalletPage() {
                       >
                         {method}
                       </button>
-                    )) : (
+                    )) : countriesLoading || countriesError ? (
                       <div className="wallet-operator-empty">
                         Aucun opérateur disponible pour votre pays.
                       </div>
+                    ) : (
+                      <EmptyState size="compact" className="wallet-operator-empty">
+                        <p>Aucun opérateur disponible pour votre pays.</p>
+                      </EmptyState>
                     )}
                   </div>
                 )}

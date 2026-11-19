@@ -143,9 +143,11 @@
 }
 
 .auth-pepsico .auth-field:focus-within {
-  border-color: #ed7895;
+  border-color: transparent;
   background: #f2f2f2;
-  box-shadow: 0 0 0 2px rgba(237, 30, 92, .08);
+  outline: 0;
+  outline-offset: 0;
+  box-shadow: none;
 }
 
 .auth-pepsico .auth-field input {

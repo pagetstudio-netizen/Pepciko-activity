@@ -7,6 +7,8 @@ The login and registration pages must stay fixed to the viewport without page sc
 
 The dark switch ribbon should meet the white form panel without a visible background gap, show only a thin tip at the left, and have a slightly rounded right corner. Keep its login/register label compact and fully visible above the panel overlap. Keep the bottom login/register switch text dark in hover, focus, and press states.
 
-**Why:** The user compared the result with the original login and registration screenshots, corrected the ribbon-to-panel join, noted that the switch label was clipped and too large, reported that interaction feedback made the bottom switch text disappear on white, and asked the white panel to reach the screen bottom.
+Do not show the rounded outer focus rectangle on login or registration fields after pointer/touch interaction. Preserve a visible keyboard-focus indicator.
+
+**Why:** The user compared the result with the original login and registration screenshots, corrected the ribbon-to-panel join, noted that the switch label was clipped and too large, reported that interaction feedback made the bottom switch text disappear on white, asked the white panel to reach the screen bottom, and requested removal of the field outline shown on click while retaining keyboard focus visibility.
 
 **How to apply:** When changing login or registration layouts, fit the controls within the viewport at mobile sizes instead of enabling page-level scrolling, extend the white panel through the viewport bottom, retain the user-provided field-icon assignments, verify the country prefix after selecting another country, keep the switch label small and above the overlapping white panel without changing the ribbon/panel join, and preserve readable dark text for all bottom-switch interaction states.

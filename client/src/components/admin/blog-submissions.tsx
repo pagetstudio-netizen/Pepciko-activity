@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Check, Image as ImageIcon, Loader2, RefreshCw } from "lucide-react";
+import { Check, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import EmptyState from "@/components/empty-state";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import BlogImageLightbox from "@/components/blog-image-lightbox";
@@ -102,10 +103,11 @@ export default function AdminBlogSubmissions() {
         </Card>
       ) : submissions.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
-            <ImageIcon className="h-8 w-8 text-muted-foreground" />
-            <p className="font-medium">Aucune soumission en attente</p>
-            <p className="text-sm text-muted-foreground">Les nouvelles publications apparaîtront ici après leur envoi.</p>
+          <CardContent className="py-8">
+            <EmptyState>
+              <p className="font-medium">Aucune soumission en attente</p>
+              <p className="text-sm text-muted-foreground">Les nouvelles publications apparaîtront ici après leur envoi.</p>
+            </EmptyState>
           </CardContent>
         </Card>
       ) : (

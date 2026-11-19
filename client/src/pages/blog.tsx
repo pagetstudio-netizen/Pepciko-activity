@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { BookOpen, Gift, ShieldCheck } from "lucide-react";
+import { Gift, ShieldCheck } from "lucide-react";
 import ruleIcon from "@assets/rule_icon_1793891936043.png";
 import publishIcon from "@assets/publish_1793891935916.png";
 import rulesArt from "@assets/rewards_icon_(1)_1793891974221.png";
+import EmptyState from "@/components/empty-state";
 import BlogImageLightbox from "@/components/blog-image-lightbox";
 import "./blog.css";
 
@@ -101,12 +102,11 @@ export default function BlogPage() {
               ))}
             </div>
           ) : (
-            <div className="pepsi-blog-state pepsi-blog-empty">
-              <span className="pepsi-empty-mark"><BookOpen size={25} /></span>
+            <EmptyState className="pepsi-blog-state pepsi-blog-empty">
               <h3>La conversation commence ici</h3>
               <p>Aucune publication pour le moment. Partagez votre expérience avec la communauté.</p>
               <button type="button" onClick={() => navigate("/blog/create")}>Écrire une publication</button>
-            </div>
+            </EmptyState>
           )}
         </section>
       </div>

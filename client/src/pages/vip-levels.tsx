@@ -8,6 +8,7 @@ import badge2 from "@assets/lv2_(1)_1793923540409.png";
 import badge3 from "@assets/lv3_(1)_1793923540379.png";
 import badge6 from "@assets/lv6_(1)_1793923540333.png";
 import badge8 from "@assets/lv8_(1)_1793923540309.png";
+import EmptyState from "@/components/empty-state";
 import "./vip-levels.css";
 
 type VipLevel = {
@@ -88,11 +89,10 @@ export default function VipLevelsPage() {
             </button>
           </section>
         ) : levels.length === 0 ? (
-          <section className="vip-empty">
-            <img src={badge0} alt="" aria-hidden="true" />
+          <EmptyState className="vip-empty">
             <h2>Aucun niveau disponible</h2>
             <p>Les niveaux VIP apparaîtront ici dès qu’ils seront configurés.</p>
-          </section>
+          </EmptyState>
         ) : (
           <>
             <section className="vip-level-list" aria-label="Progression des niveaux VIP">

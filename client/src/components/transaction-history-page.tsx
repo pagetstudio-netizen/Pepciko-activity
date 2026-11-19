@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import EmptyState from "@/components/empty-state";
 import WithdrawalFloatingTools from "@/components/withdrawal-floating-tools";
 import "./transaction-history-page.css";
 
@@ -112,6 +113,12 @@ export default function TransactionHistoryPage({ kind }: { kind: HistoryKind }) 
               Réessayer
             </button>
           </div>
+        )}
+
+        {!query.isLoading && !query.isError && transactions.length === 0 && (
+          <EmptyState className="transaction-history-page__empty">
+            <p>{isDeposit ? "Aucun dépôt pour le moment." : "Aucun retrait pour le moment."}</p>
+          </EmptyState>
         )}
 
         {!query.isLoading && !query.isError && transactions.length > 0 && (

@@ -6,6 +6,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { copyTextWithToast } from "@/lib/copy-to-clipboard";
+import EmptyState from "@/components/empty-state";
 import type { ApiCountry } from "@/lib/countries";
 import type { PaymentNumber } from "@shared/schema";
 
@@ -596,9 +597,15 @@ export default function RobotPayPage() {
                   {copy.loadingOperators}
                 </div>
               ) : operators.length === 0 ? (
-                <div className="flex min-h-[clamp(72px,11dvh,96px)] items-center justify-center px-8 pr-14 text-center text-sm text-[#777]">
-                  {copy.noOperators}
-                </div>
+                paymentQueryError ? (
+                  <div className="flex min-h-[clamp(72px,11dvh,96px)] items-center justify-center px-8 pr-14 text-center text-sm text-[#777]">
+                    {copy.noOperators}
+                  </div>
+                ) : (
+                  <EmptyState size="compact" className="robotpay-empty-operators min-h-[clamp(72px,11dvh,96px)] px-8 pr-14 text-sm text-[#777]">
+                    <p>{copy.noOperators}</p>
+                  </EmptyState>
+                )
               ) : (
                 <div className="mt-[clamp(8px,1.7dvh,15px)] flex flex-wrap justify-center gap-3 pr-14">
                   {operators.map((op, i) => {

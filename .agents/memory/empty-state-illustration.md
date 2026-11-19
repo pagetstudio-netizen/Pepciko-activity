@@ -11,6 +11,6 @@ On the daily connection rewards history page, omit the empty-state illustration 
 
 On `/orders`, use the dedicated no-orders artwork inside the reference card with no caption, and show it only when the purchased-product list is genuinely empty.
 
-**Why:** On 2026-10-08, the user supplied a new empty-state illustration and asked to show it on all pages with no content, replacing the previously selected artwork; they later asked for consistent centered, larger, less prominent presentation. On 2026-11-08, they supplied a separate reference and illustration for the empty Orders page, with no message text.
+**Why:** On 2026-10-08, the user supplied an empty-state illustration and asked to show it on pages with no content; they later asked for consistent centered, larger, less prominent presentation. On 2026-11-08, they supplied separate no-orders artwork for `/orders`. On 2026-11-19, they provided a newer transparent illustration for pages with empty content.
 
 **How to apply:** Use the shared empty-state component whenever a data/result list is empty, except on the daily connection rewards history page, which uses text only, and `/orders`, which uses its dedicated no-orders artwork. Do not show empty-state art during loading, API errors, disabled states, or payment progress; do not change RobotPay colors or layout.

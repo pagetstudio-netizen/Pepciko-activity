@@ -1,6 +1,7 @@
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Task } from "@shared/schema";
+import EmptyState from "@/components/empty-state";
 import backIcon from "@assets/image_1794151162399.png";
 import rechargeThumbnail from "@assets/notice-recharge-thumbnail.png";
 import referralThumbnail from "@assets/notice-referral-thumbnail.png";
@@ -141,7 +142,9 @@ export default function NoticePage() {
                   })}
                 </div>
               ) : (
-                <p className="notice-referral-state">Aucune tâche de parrainage disponible pour le moment.</p>
+                <EmptyState size="compact" className="notice-referral-empty">
+                  <p className="notice-referral-state">Aucune tâche de parrainage disponible pour le moment.</p>
+                </EmptyState>
               )}
             </section>
           )}

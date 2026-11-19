@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Ticket } from "lucide-react";
 import { Link } from "wouter";
+import EmptyState from "@/components/empty-state";
 import "./checkin-game-visual.css";
 import numberOne from "../../../attached_assets/_411483bfde8d9ce5a37e92d12f992725_1794098831658.jpg";
 import numberTwo from "../../../attached_assets/_44cb0059172d7c3dc43ebf4c763fb3b9_1794098831687.jpg";
@@ -256,7 +257,13 @@ export default function CheckinGameVisual({
                     <td>{formatPrize(win.amount)} FCFA</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={3} className="fortune-redesign__records-empty">Aucun gain enregistré pour le moment.</td></tr>
+                  <tr>
+                    <td colSpan={3} className="fortune-redesign__records-empty">
+                      <EmptyState size="compact" className="fortune-redesign__records-empty-state">
+                        <p>Aucun gain enregistré pour le moment.</p>
+                      </EmptyState>
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>

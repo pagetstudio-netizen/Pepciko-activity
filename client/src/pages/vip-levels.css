@@ -199,7 +199,6 @@
 }
 .vip-error button:disabled { opacity: .65; cursor: wait; }
 .vip-error button svg { width: 16px; height: 16px; }
-.vip-empty img { width: 54px; height: 54px; object-fit: contain; }
 .vip-empty h2 { margin: 9px 0 4px; }
 .vip-empty p { margin: 0; }
 .vip-refreshing { animation: vipSpin .8s linear infinite; }
