@@ -131,6 +131,7 @@ import {
   getPpayProsCredentialStatus,
   getPpayProsCredentials,
   getPpayProsDefaultWayCode,
+  getPpayProsCountryRegistrationMessage,
   parsePpayProsMerchantOrderNo,
   PPAYPROS_COUNTRIES,
   PpayProsApiError,
@@ -1914,10 +1915,18 @@ export async function registerRoutes(
             ppaypros: true,
           });
         }
+        const accountCountry = user.country.trim().toUpperCase();
+        const registrationMessage = getPpayProsCountryRegistrationMessage(countryCode);
+        if (registrationMessage && accountCountry !== countryCode) {
+          return res.status(400).json({
+            message: registrationMessage,
+            ppaypros: true,
+            countryRegistrationRequired: true,
+          });
+        }
         let ppayProsDepositId: number | null = null;
         try {
           getPpayProsCredentials(countryCode);
-          const accountCountry = user.country.trim().toUpperCase();
           const customerPhone = formatPpayProsPhone(accountCountry, user.phone);
           const deposit = await storage.createDeposit({
             userId: user.id,

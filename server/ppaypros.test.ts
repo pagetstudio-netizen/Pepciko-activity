@@ -8,6 +8,7 @@ import {
   getPpayProsCredentialStatus,
   getPpayProsCredentials,
   getPpayProsDefaultWayCode,
+  getPpayProsCountryRegistrationMessage,
   getPpayProsBalance,
   queryPpayProsPayout,
   resolvePpayProsPayoutAccountCode,
@@ -63,6 +64,26 @@ test("normalizes only the registered country's documented PPayPros phone format"
   assert.equal(formatPpayProsPhone("CM", "+237 6 70 12 34 56"), "670123456");
   assert.equal(normalizeBeninPhone("22912345"), "0122912345");
   assert.equal(normalizeBeninPhone("+229 01 99 35 67 39"), "0199356739");
+});
+
+test("explains country-specific registration requirements for PPayPros deposits", () => {
+  assert.equal(
+    getPpayProsCountryRegistrationMessage("BJ"),
+    "Pour effectuer un dépôt au Bénin, vous devez avoir un compte enregistré au Bénin.",
+  );
+  assert.equal(
+    getPpayProsCountryRegistrationMessage("cm"),
+    "Pour effectuer un dépôt au Cameroun, vous devez avoir un compte enregistré au Cameroun.",
+  );
+  assert.equal(
+    getPpayProsCountryRegistrationMessage("TG"),
+    "Pour effectuer un dépôt au Togo, vous devez avoir un compte enregistré au Togo.",
+  );
+  assert.equal(
+    getPpayProsCountryRegistrationMessage("CI"),
+    "Pour effectuer un dépôt en Côte d’Ivoire, vous devez avoir un compte enregistré en Côte d’Ivoire.",
+  );
+  assert.equal(getPpayProsCountryRegistrationMessage("BF"), null);
 });
 
 test("loads isolated country credentials and preserves legacy Benin secrets", () => {

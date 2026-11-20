@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { getPpayProsPhoneError, normalizePpayProsPhone } from "@shared/phone";
 import { PPAYPROS_COUNTRIES } from "@shared/ppaypros";
-export { PPAYPROS_COUNTRIES } from "@shared/ppaypros";
+export { getPpayProsCountryRegistrationMessage, PPAYPROS_COUNTRIES } from "@shared/ppaypros";
 
 const PPAYPROS_API_BASE = "https://pay.ppaypros.com";
 const PPAYPROS_AMOUNT_SCALE = 100;

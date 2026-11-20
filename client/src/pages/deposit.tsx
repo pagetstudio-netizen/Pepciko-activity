@@ -12,6 +12,7 @@ import { Link, useLocation } from "wouter";
 import type { ApiCountry } from "@/lib/countries";
 import type { PaymentNumber } from "@shared/schema";
 import { getPpayProsPhoneError, normalizePpayProsPhone } from "@shared/phone";
+import { getPpayProsCountryRegistrationMessage } from "@shared/ppaypros";
 import { getPaymentOperatorLogo } from "@/lib/payment-operator-logos";
 import EmptyState from "@/components/empty-state";
 import WithdrawalFloatingTools from "@/components/withdrawal-floating-tools";
@@ -408,8 +409,11 @@ export default function DepositPage() {
       if (!res.ok) {
         const data = await res.json();
         const message = String(data.message || "");
+        const registrationMessage = getPpayProsCountryRegistrationMessage(countryCode);
         throw new Error(
-          /ppaypros/i.test(message)
+          message === registrationMessage
+            ? message
+            : /ppaypros/i.test(message)
             ? "Impossible de préparer le paiement. Réessayez ou contactez le service client."
             : message || "Impossible de préparer le paiement."
         );
@@ -424,10 +428,16 @@ export default function DepositPage() {
       }
     },
     onError: (error: any) => {
-      const signatureRejected = /signature verification failed/i.test(String(error.message || ""));
+      const errorMessage = String(error.message || "");
+      const signatureRejected = /signature verification failed/i.test(errorMessage);
+      const registrationMessage = getPpayProsCountryRegistrationMessage(country);
       toast({
-        title: signatureRejected ? "Paiement refusé" : "Erreur de paiement",
-        description: DEPOSIT_ERROR_MESSAGE,
+        title: errorMessage === registrationMessage
+          ? "Pays du compte requis"
+          : signatureRejected
+            ? "Paiement refusé"
+            : "Erreur de paiement",
+        description: errorMessage === registrationMessage ? errorMessage : DEPOSIT_ERROR_MESSAGE,
         variant: "destructive",
       });
     },
@@ -649,7 +659,17 @@ export default function DepositPage() {
       return;
     }
     if (ppayprosAvailable) {
-      const accountCountry = (user?.country || country).trim().toUpperCase();
+      const accountCountry = (user?.country || "").trim().toUpperCase();
+      const selectedCountry = country.trim().toUpperCase();
+      const registrationMessage = getPpayProsCountryRegistrationMessage(selectedCountry);
+      if (registrationMessage && accountCountry !== selectedCountry) {
+        toast({
+          title: "Pays du compte requis",
+          description: registrationMessage,
+          variant: "destructive",
+        });
+        return;
+      }
       if (!normalizePpayProsPhone(accountCountry, user?.phone)) {
         toast({
           title: "Numéro du compte invalide",

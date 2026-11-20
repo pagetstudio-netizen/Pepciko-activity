@@ -7,3 +7,16 @@ export const PPAYPROS_COUNTRIES = [
 ] as const;
 
 export type PpayProsCountryCode = (typeof PPAYPROS_COUNTRIES)[number]["code"];
+
+const PPayProsSameCountryDepositLabels: Record<string, string> = {
+  BJ: "au Bénin",
+  TG: "au Togo",
+  CI: "en Côte d’Ivoire",
+  CM: "au Cameroun",
+};
+
+export function getPpayProsCountryRegistrationMessage(countryCode: string): string | null {
+  const label = PPayProsSameCountryDepositLabels[countryCode.trim().toUpperCase()];
+  if (!label) return null;
+  return `Pour effectuer un dépôt ${label}, vous devez avoir un compte enregistré ${label}.`;
+}
