@@ -1904,12 +1904,6 @@ export async function registerRoutes(
       // ── PPayPros: country-specific hosted checkout ──────────────────────────
       if (usePpaypros === true) {
         const countryCode = normalizedDeposit.country.trim().toUpperCase();
-        if (countryCode !== user.country.trim().toUpperCase()) {
-          return res.status(400).json({
-            message: "Le pays du dépôt doit correspondre au pays enregistré sur le compte.",
-            ppaypros: true,
-          });
-        }
         if (!isPpayProsEnabled("Payin", countryCode, settings)) {
           return res.status(403).json({ message: `Le dépôt PPayPros est désactivé pour ${countryCode}.`, ppaypros: true });
         }
@@ -1923,7 +1917,8 @@ export async function registerRoutes(
         let ppayProsDepositId: number | null = null;
         try {
           getPpayProsCredentials(countryCode);
-          const customerPhone = formatPpayProsPhone(countryCode, user.phone);
+          const accountCountry = user.country.trim().toUpperCase();
+          const customerPhone = formatPpayProsPhone(accountCountry, user.phone);
           const deposit = await storage.createDeposit({
             userId: user.id,
             amount: normalizedDeposit.amount,
@@ -1947,6 +1942,7 @@ export async function registerRoutes(
             amountXof: normalizedDeposit.amount,
             customerName: normalizedDeposit.accountName || user.fullName,
             customerPhone,
+            customerPhoneCountry: accountCountry,
             customerEmail: `user${user.id}@tonnew.app`,
             notifyUrl: `${baseUrl}/api/webhooks/ppaypros/payin`,
             returnUrl: `${baseUrl}/api/ppaypros/return?depositId=${deposit.id}`,

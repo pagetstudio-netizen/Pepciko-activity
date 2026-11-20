@@ -392,12 +392,10 @@ export default function DepositPage() {
   const ppayprosInitiateMutation = useMutation({
     mutationFn: async () => {
       const countryCode = country.trim().toUpperCase();
-      if (user?.country?.toUpperCase() !== countryCode) {
-        throw new Error("Le pays sélectionné doit correspondre au pays enregistré sur votre compte.");
-      }
-      const customerPhone = normalizePpayProsPhone(countryCode, user?.phone);
+      const accountCountry = (user?.country || countryCode).trim().toUpperCase();
+      const customerPhone = normalizePpayProsPhone(accountCountry, user?.phone);
       if (!customerPhone) {
-        throw new Error(getPpayProsPhoneError(countryCode));
+        throw new Error(getPpayProsPhoneError(accountCountry));
       }
       const res = await apiRequest("POST", "/api/deposits", {
         amount: Number(amount),
@@ -651,18 +649,11 @@ export default function DepositPage() {
       return;
     }
     if (ppayprosAvailable) {
-      if (user?.country?.trim().toUpperCase() !== country.trim().toUpperCase()) {
-        toast({
-          title: "Pays du compte différent",
-          description: "Le dépôt utilise le numéro enregistré pour le pays du compte.",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!normalizePpayProsPhone(country, user?.phone)) {
+      const accountCountry = (user?.country || country).trim().toUpperCase();
+      if (!normalizePpayProsPhone(accountCountry, user?.phone)) {
         toast({
           title: "Numéro du compte invalide",
-          description: getPpayProsPhoneError(country),
+          description: getPpayProsPhoneError(accountCountry),
           variant: "destructive",
         });
         return;

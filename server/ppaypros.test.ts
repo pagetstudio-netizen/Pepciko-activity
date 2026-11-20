@@ -208,6 +208,42 @@ test("sends Côte d'Ivoire and Cameroon payins with their own phone formats", as
   }
 });
 
+test("opens a selected-country checkout using the account phone format", async () => {
+  process.env.PPAYPROS_MCH_NO_CM = "merchant-cm-test";
+  process.env.PPAYPROS_APP_ID_CM = "app-cm-test";
+  process.env.PPAYPROS_PRIVATE_KEY_CM = "private-cm-test";
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, unknown> = {};
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    requestBody = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>;
+    return new Response(JSON.stringify({
+      code: 0,
+      data: { mchOrderNo: "PPIN-50", payDataType: "payUrl", payData: "https://checkout.example.test/pay" },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    await createPpayProsPayin({
+      country: "CM",
+      wayCode: "890",
+      merchantOrderNo: "PPIN-50",
+      amountXof: 3000,
+      customerName: "Test User",
+      customerPhone: "+228 90 12 34 56",
+      customerPhoneCountry: "TG",
+      customerEmail: "test@example.test",
+      notifyUrl: "https://app.example.test/api/webhooks/ppaypros/payin",
+      returnUrl: "https://app.example.test/deposit",
+    });
+
+    assert.equal(requestBody.mchNo, "merchant-cm-test");
+    assert.equal(requestBody.wayCode, "890");
+    assert.equal(requestBody.customerPhone, "90123456");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("queries country-specific provider balance with signed credentials", async () => {
   process.env.PPAYPROS_MCH_NO_TG = "merchant-tg-test";
   process.env.PPAYPROS_APP_ID_TG = "app-tg-test";
