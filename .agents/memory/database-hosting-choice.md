@@ -1,12 +1,12 @@
 ---
 name: Database hosting choice
-description: The user selected Supabase as the application's primary database and authorized migrating development data.
+description: The user chose Supabase as the active database and specified which development data may be copied.
 ---
 
-Supabase (`SUPABASE_DATABASE_URL`) remains the intended external datastore. For this new import, on 2026-11-05 the user explicitly chose to initialize the empty Replit development database instead of reconnecting Supabase. Use the existing `DATABASE_URL` fallback for this import; do not assume it contains prior users or transactions. Supabase and production data have not been changed during this setup.
+Supabase is the application's active database. When preparing it from the Replit development database, preserve the existing session table and copy only the catalogs and configuration the user asked to keep: countries, products, tasks, payment channels/numbers, and platform settings. Do not copy test users, balances, positions, deposits, withdrawals, commissions, transaction histories, or other user activity.
 
-Never use the legacy Supabase migration script that truncates destination tables. The safe development transfer checks that destination tables are empty, copies without overwriting, and verifies row counts. Supabase currently contains the complete development copy; source development contains only the administrator and shared configuration.
+Keep the Replit development database unchanged as a rollback/source copy unless the user separately asks to erase it. Never use the legacy Supabase migration script that truncates destination tables. Require an empty Supabase target for the curated bootstrap and verify copied row counts.
 
-**Why:** The user previously selected Supabase, but explicitly authorized a fresh Replit development database when the Supabase secret was absent from this import.
+**Why:** The user wants the active platform moved to Supabase with products, countries, operators, and Admin settings retained, while test accounts and their records are reset.
 
-**How to apply:** Preserve Supabase preference when its secret is configured, and use Replit for this import's development environment until the user requests reconnection. Treat any production migration as a separate task; do not replace Supabase with development data or delete production records without explicit scope and verification.
+**How to apply:** Treat the selected Supabase database as the live app target. For a fresh setup, create the schema without dropping `session`, copy only the approved catalog/config tables, provision the Admin through Secrets, and leave the Replit source untouched unless separately authorized.

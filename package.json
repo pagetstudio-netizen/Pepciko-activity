@@ -9,7 +9,8 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test": "node --import tsx --test server/*.test.ts",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "db:bootstrap-supabase-catalog": "tsx server/bootstrap-supabase-catalog.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
