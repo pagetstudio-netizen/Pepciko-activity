@@ -3,7 +3,7 @@ name: PPayPros country setup
 description: Country-specific PPayPros documentation, credentials, phone formats, and live-payment checks.
 ---
 
-PPayPros payins may target a country different from the signup country; use the selected country for credentials and way code, and keep signup phone validation unchanged. Live testing showed that a Togo-format account phone targeting Cameroon is rejected (state 3, no checkout URL), while a Cameroon-format customer phone opened the checkout. The hosted PPayPros page collects the actual payer number, but the API still needs a customer phone matching the selected market to create that page. Never fabricate a number.
+PPayPros payins may target a country different from the signup country; use the selected country for credentials and way code, and keep signup phone validation unchanged. Live testing showed that a Togo-format account phone targeting Cameroon is rejected (state 3, no checkout URL), while a Cameroon-format customer phone opened the checkout. A Benin-format customer phone likewise opened the checkout, and the hosted page then showed a separate +229 wallet-number field requiring 10 digits. The hosted PPayPros page collects the actual payer number, but the API still needs a customer phone matching the selected market to create that page. Never fabricate a number.
 
 If PPayPros returns “Signature verification failed” after the phone passes validation, stop changing phone formatting and verify that the merchant number, app ID, signing key, and documented signing method all belong together. Never log or request the credential values in chat.
 
