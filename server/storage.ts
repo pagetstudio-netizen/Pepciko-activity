@@ -9,6 +9,8 @@ import {
 import { db } from "./db";
 import { calculateNetAdminBalanceCredit } from "./admin-balance-credit";
 import { INVITATION_TASK_KEY_PREFIX, countQualifiedDirectReferrals } from "./invitation-tasks";
+import { summarizeTeamProductPurchases } from "./team-investment-stats";
+import { resolveSignupBonus } from "./signup-bonus";
 import { calculateMaturityPayout } from "./product-payout";
 import { isUserProductRevoked } from "./product-revocation";
 import {
@@ -245,7 +247,7 @@ export interface IStorage {
   getReferrals(userId: number, level: number): Promise<User[]>;
   createReferralCommission(data: Partial<ReferralCommission>): Promise<ReferralCommission>;
   getUserCommissions(userId: number): Promise<number>;
-  getTeamStats(userId: number): Promise<{ level1Count: number; level2Count: number; level3Count: number; totalCommission: number; level1Commission: number; level2Commission: number; level3Commission: number; level1Invested: number; level2Invested: number; level3Invested: number; level1Recharged: number; teamRechargeAmount: number; level1RechargeAmount: number; level2RechargeAmount: number; level3RechargeAmount: number }>;
+  getTeamStats(userId: number): Promise<{ level1Count: number; level2Count: number; level3Count: number; totalCommission: number; level1Commission: number; level2Commission: number; level3Commission: number; level1Invested: number; level2Invested: number; level3Invested: number; level1PaidProductUsers: number; level2PaidProductUsers: number; level3PaidProductUsers: number; level1Recharged: number; teamRechargeAmount: number; level1RechargeAmount: number; level2RechargeAmount: number; level3RechargeAmount: number }>;
   getTeamStatsSimple(userId: number): Promise<{ level1Count: number; level2Count: number; level3Count: number; totalCommission: number }>;
   
   // Tasks
@@ -374,28 +376,30 @@ export class DatabaseStorage implements IStorage {
     const referralCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     const hashedPassword = await hashPassword(data.password!);
 
-    // Get signup bonus from settings (default 200)
-    let signupBonus = "200";
+    // Get signup bonus from settings; a missing or invalid value means no bonus.
+    let signupBonus = 0;
     try {
       const settings = await this.getSettings();
-      signupBonus = settings.signupBonus || "200";
+      signupBonus = resolveSignupBonus(settings.signupBonus);
     } catch {}
 
     const [user] = await db.insert(users).values({
       ...data,
       password: hashedPassword,
       referralCode,
-      balance: signupBonus,
-      depositBalance: signupBonus,
+      balance: signupBonus.toString(),
+      depositBalance: signupBonus.toString(),
       withdrawalBalance: "0",
     } as any).returning();
-    
-    await this.createTransaction({
-      userId: user.id,
-      type: "bonus",
-      amount: signupBonus,
-      description: "Bonus d'inscription",
-    });
+
+    if (signupBonus > 0) {
+      await this.createTransaction({
+        userId: user.id,
+        type: "bonus",
+        amount: signupBonus.toString(),
+        description: "Bonus d'inscription",
+      });
+    }
     
     return user;
   }
@@ -1934,7 +1938,7 @@ export class DatabaseStorage implements IStorage {
     return { level1Count, level2Count, level3Count, totalCommission };
   }
 
-  async getTeamStats(userId: number): Promise<{ level1Count: number; level2Count: number; level3Count: number; totalCommission: number; level1Commission: number; level2Commission: number; level3Commission: number; level1Invested: number; level2Invested: number; level3Invested: number; level1Recharged: number; teamRechargeAmount: number; level1RechargeAmount: number; level2RechargeAmount: number; level3RechargeAmount: number }> {
+  async getTeamStats(userId: number): Promise<{ level1Count: number; level2Count: number; level3Count: number; totalCommission: number; level1Commission: number; level2Commission: number; level3Commission: number; level1Invested: number; level2Invested: number; level3Invested: number; level1PaidProductUsers: number; level2PaidProductUsers: number; level3PaidProductUsers: number; level1Recharged: number; teamRechargeAmount: number; level1RechargeAmount: number; level2RechargeAmount: number; level3RechargeAmount: number }> {
     const level1 = await this.getReferrals(userId, 1);
     const level2 = await this.getReferrals(userId, 2);
     const level3 = await this.getReferrals(userId, 3);
@@ -1960,6 +1964,24 @@ export class DatabaseStorage implements IStorage {
       return count;
     };
 
+    const countPaidProductUsers = async (userList: User[]) => {
+      const userIds = userList.map(({ id }) => id);
+      if (userIds.length === 0) return 0;
+      const purchases = await db.select({
+        userId: userProducts.userId,
+        purchasePrice: userProducts.purchasePrice,
+        currentProductPrice: products.price,
+        isFree: products.isFree,
+        assignedByAdmin: userProducts.assignedByAdmin,
+        isActive: userProducts.isActive,
+      })
+        .from(userProducts)
+        .innerJoin(products, eq(userProducts.productId, products.id))
+        .where(inArray(userProducts.userId, userIds));
+      const summaries = summarizeTeamProductPurchases(purchases);
+      return userIds.filter((id) => summaries.get(id)?.hasActivePurchasedProduct).length;
+    };
+
     const countRecharged = async (userList: User[]) => {
       let count = 0;
       for (const u of userList) {
@@ -1981,6 +2003,9 @@ export class DatabaseStorage implements IStorage {
       level1Invested: await countInvested(level1),
       level2Invested: await countInvested(level2),
       level3Invested: await countInvested(level3),
+      level1PaidProductUsers: await countPaidProductUsers(level1),
+      level2PaidProductUsers: await countPaidProductUsers(level2),
+      level3PaidProductUsers: await countPaidProductUsers(level3),
       level1Recharged: await countRecharged(level1),
       teamRechargeAmount: level1Deposits.amount + level2Deposits.amount + level3Deposits.amount,
       level1RechargeAmount: level1Deposits.amount,
@@ -1989,7 +2014,7 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getDetailedTeam(userId: number): Promise<any> {
+  async getDetailedTeam(userId: number, excludeAdminAssignedPurchases = false): Promise<any> {
     const level1 = await this.getReferrals(userId, 1);
     const level2 = await this.getReferrals(userId, 2);
     const level3 = await this.getReferrals(userId, 3);
@@ -2008,8 +2033,13 @@ export class DatabaseStorage implements IStorage {
         db.select({
           productName: products.name,
           productPrice: products.price,
+          purchasePrice: userProducts.purchasePrice,
+          isFree: products.isFree,
+          assignedByAdmin: userProducts.assignedByAdmin,
+          purchaseIsActive: userProducts.isActive,
           purchaseDate: userProducts.purchaseDate,
           isActive: userProducts.isActive,
+          userId: userProducts.userId,
         })
           .from(userProducts)
           .innerJoin(products, eq(userProducts.productId, products.id))
@@ -2022,9 +2052,25 @@ export class DatabaseStorage implements IStorage {
           .where(and(eq(withdrawals.userId, user.id), eq(withdrawals.status, "approved"))),
       ]);
       
-      const totalInvested = userProductsList
-        .filter(p => !p.isActive || p.isActive)
-        .reduce((sum, p) => sum + p.productPrice, 0);
+      const purchaseSummaries = summarizeTeamProductPurchases(userProductsList.map((purchase) => ({
+        userId: purchase.userId,
+        purchasePrice: purchase.purchasePrice,
+        currentProductPrice: purchase.productPrice,
+        isFree: purchase.isFree,
+        assignedByAdmin: purchase.assignedByAdmin,
+        isActive: purchase.purchaseIsActive,
+      })));
+      const purchaseSummary = purchaseSummaries.get(user.id) ?? {
+        totalInvested: 0,
+        hasPurchasedProduct: false,
+        hasActivePurchasedProduct: false,
+      };
+      const totalInvested = excludeAdminAssignedPurchases
+        ? purchaseSummary.totalInvested
+        : userProductsList.reduce((sum, purchase) => sum + purchase.productPrice, 0);
+      const productsForResponse = excludeAdminAssignedPurchases
+        ? userProductsList.filter((purchase) => !purchase.assignedByAdmin)
+        : userProductsList;
 
       return {
         id: user.id,
@@ -2032,13 +2078,16 @@ export class DatabaseStorage implements IStorage {
         phone: user.phone,
         country: user.country,
         balance: user.balance,
-        hasActiveProduct: user.hasActiveProduct,
+        hasActiveProduct: excludeAdminAssignedPurchases
+          ? purchaseSummary.hasActivePurchasedProduct
+          : user.hasActiveProduct,
+        hasPurchasedProduct: purchaseSummary.hasPurchasedProduct,
         hasDeposited: user.hasDeposited,
         createdAt: user.createdAt,
         totalInvested,
         totalRecharged: approvedDeposits.amount,
         totalWithdrawn: Number(approvedWithdrawals[0]?.amount ?? 0),
-        products: userProductsList,
+        products: productsForResponse,
       };
     };
 

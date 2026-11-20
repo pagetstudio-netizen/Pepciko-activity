@@ -7,7 +7,7 @@ export default function RulesPage() {
     queryKey: ["/api/settings"],
   });
 
-  const signupBonus = settings?.signupBonus || "500";
+  const signupBonus = Math.max(0, Number.parseInt(settings?.signupBonus ?? "0", 10) || 0);
   const minDeposit = settings?.minDeposit || "4000";
   const minWithdrawal = settings?.minWithdrawal || "1500";
   const withdrawalFees = settings?.withdrawalFees || "18";
@@ -63,7 +63,9 @@ export default function RulesPage() {
         <section className="space-y-2">
           <h2 className="text-[15px] font-bold text-[#7fc9ff] border-l-2 border-[#7fc9ff] pl-2">4. Bonus d'inscription</h2>
           <ul className="list-disc pl-5 space-y-1">
-            <li>Chaque nouveau membre reçoit {parseInt(signupBonus).toLocaleString()} FCFA de bonus à l'inscription.</li>
+            <li>{signupBonus > 0
+              ? `Chaque nouveau membre reçoit ${signupBonus.toLocaleString("fr-FR")} FCFA de bonus à l'inscription.`
+              : "Aucun bonus d'inscription n'est actuellement offert."}</li>
           </ul>
         </section>
 

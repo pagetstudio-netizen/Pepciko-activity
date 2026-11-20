@@ -34,6 +34,8 @@
 - [Withdrawal product eligibility](withdrawal-product-eligibility.md) — Withdrawals require at least one active stable position; activity-only and completed positions do not qualify.
 - [Revoked product visibility](revoked-product-visibility.md) — Hide admin-revoked positions from user lists while retaining their record and distinguishing them from completed products.
 - [Referral commission eligibility](referral-commission-policy.md) — Pay referral commissions only on the referred user's first paid stable-product purchase.
+- [Team investment statistics](team-investment-statistics.md) — exclude admin-assigned and free products from member-facing purchased, active, and invested figures.
+- [Invitation reward increases](invitation-reward-increases.md) — when milestones rise, credit already-claimed users only the unpaid difference, once, without clawbacks.
 - [Product payout policy](product-payout-policy.md) — Product earnings are credited once at maturity; preserve and subtract any amounts already paid on legacy positions.
 - [Balance separation](balance-separation.md) — Keep non-withdrawable deposits and bonuses separate from withdrawable earnings and commissions.
 - [Daily check-in bonus](daily-checkin-bonus.md) — Scale daily rewards from 45 to 150 FCFA by approved-deposit VIP level; preserve the 24-hour active-stable rule.

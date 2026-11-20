@@ -3356,7 +3356,7 @@ export async function registerRoutes(
 
   app.get("/api/team/details", requireAuth, async (req, res) => {
     try {
-      const team = await storage.getDetailedTeam(req.session.userId!);
+      const team = await storage.getDetailedTeam(req.session.userId!, true);
       res.json(team);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

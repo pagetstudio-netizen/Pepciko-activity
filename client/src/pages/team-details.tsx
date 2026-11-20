@@ -20,6 +20,7 @@ interface TeamMember {
   totalRecharged: number;
   totalWithdrawn: number;
   hasActiveProduct: boolean;
+  hasPurchasedProduct: boolean;
 }
 
 interface TeamDetails {
@@ -108,7 +109,7 @@ export default function TeamDetailsPage() {
                 <div className="team-details-member-copy">
                   <div className="team-details-member-heading">
                     <strong>Mobile : {maskPhone(member.phone)}</strong>
-                    {member.hasActiveProduct && <span className="team-details-purchased">Acheté</span>}
+                    {member.hasPurchasedProduct && <span className="team-details-purchased">Acheté</span>}
                   </div>
                   <div className="team-details-member-balances">
                     <span>

@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { countQualifiedDirectReferrals, INVITATION_TASK_DEFAULTS } from "./invitation-tasks";
+import {
+  calculateInvitationRewardTopUp,
+  countQualifiedDirectReferrals,
+  INVITATION_TASK_DEFAULTS,
+} from "./invitation-tasks";
 
 test("seeds exactly the five requested FCFA invitation milestones", () => {
   assert.deepEqual(
@@ -8,11 +12,19 @@ test("seeds exactly the five requested FCFA invitation milestones", () => {
     [
       [3, 500],
       [5, 1200],
-      [10, 2500],
-      [30, 6500],
-      [100, 15000],
+      [10, 3500],
+      [30, 14000],
+      [100, 30000],
     ],
   );
+});
+
+test("calculates only the unpaid difference for previously claimed invitation rewards", () => {
+  assert.equal(calculateInvitationRewardTopUp(2500, 3500), 1000);
+  assert.equal(calculateInvitationRewardTopUp(8500, 14000), 5500);
+  assert.equal(calculateInvitationRewardTopUp(20000, 30000), 10000);
+  assert.equal(calculateInvitationRewardTopUp(3500, 3500), 0);
+  assert.equal(calculateInvitationRewardTopUp(4000, 3500), 0);
 });
 
 test("counts a direct referral once only after a deposit and paid stable-product purchase", () => {

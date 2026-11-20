@@ -3,9 +3,9 @@ export const INVITATION_TASK_KEY_PREFIX = "invite_level1_";
 export const INVITATION_TASK_DEFAULTS = [
   { taskKey: "invite_level1_3", requiredInvites: 3, reward: 500 },
   { taskKey: "invite_level1_5", requiredInvites: 5, reward: 1200 },
-  { taskKey: "invite_level1_10", requiredInvites: 10, reward: 2500 },
-  { taskKey: "invite_level1_30", requiredInvites: 30, reward: 6500 },
-  { taskKey: "invite_level1_100", requiredInvites: 100, reward: 15000 },
+  { taskKey: "invite_level1_10", requiredInvites: 10, reward: 3500 },
+  { taskKey: "invite_level1_30", requiredInvites: 30, reward: 14000 },
+  { taskKey: "invite_level1_100", requiredInvites: 100, reward: 30000 },
 ].map((tier, index) => ({
   ...tier,
   name: tier.taskKey,
@@ -13,6 +13,11 @@ export const INVITATION_TASK_DEFAULTS = [
   sortOrder: 101 + index,
   isActive: true,
 }));
+
+export function calculateInvitationRewardTopUp(previouslyCredited: number, targetReward: number): number {
+  if (!Number.isFinite(previouslyCredited) || !Number.isFinite(targetReward)) return 0;
+  return Math.max(0, targetReward - previouslyCredited);
+}
 
 export interface ReferralProductPurchase {
   userId: number;

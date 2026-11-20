@@ -1,5 +1,14 @@
 import { db } from "./db";
-import { users, products, tasks, paymentChannels, platformSettings, countries } from "@shared/schema";
+import {
+  users,
+  products,
+  tasks,
+  userTasks,
+  transactions,
+  paymentChannels,
+  platformSettings,
+  countries,
+} from "@shared/schema";
 import {
   JOHN_DEERE_PRODUCT_CATALOG,
   JOHN_DEERE_PRODUCT_IMAGE_PATHS,
@@ -9,9 +18,13 @@ import {
 import { formatActivityProductName } from "@shared/activity-product-names";
 import { formatStableProductName } from "@shared/stable-product-names";
 import { formatWellnessProductName } from "@shared/wellness-product-names";
-import { INVITATION_TASK_DEFAULTS, INVITATION_TASK_KEY_PREFIX } from "./invitation-tasks";
+import {
+  calculateInvitationRewardTopUp,
+  INVITATION_TASK_DEFAULTS,
+  INVITATION_TASK_KEY_PREFIX,
+} from "./invitation-tasks";
 import bcrypt from "bcrypt";
-import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 export async function seed() {
   console.log("Seeding database...");
@@ -396,6 +409,78 @@ export async function seed() {
     console.log("Invitation task tiers migrated to the five requested milestones");
   }
 
+  // One-time reward increase: update active invitation rewards and top up completed claims.
+  const invitationRewardIncreaseMigrationKey = "invitationTaskRewardIncreaseV3";
+  const invitationRewardIncreaseMigration = await db.select({ key: platformSettings.key })
+    .from(platformSettings)
+    .where(eq(platformSettings.key, invitationRewardIncreaseMigrationKey))
+    .limit(1);
+  if (invitationRewardIncreaseMigration.length === 0) {
+    let creditedClaims = 0;
+    await db.transaction(async (tx) => {
+      const upgradedTiers = INVITATION_TASK_DEFAULTS.filter(({ requiredInvites }) =>
+        requiredInvites === 10 || requiredInvites === 30 || requiredInvites === 100
+      );
+
+      for (const tier of upgradedTiers) {
+        const [task] = await tx.select({ id: tasks.id, reward: tasks.reward })
+          .from(tasks)
+          .where(eq(tasks.name, tier.taskKey))
+          .limit(1);
+        if (!task) continue;
+
+        const claims = await tx.select({ userId: userTasks.userId })
+          .from(userTasks)
+          .where(and(
+            eq(userTasks.taskId, task.id),
+            eq(userTasks.rewardClaimed, true),
+          ));
+        const claimedUserIds = new Set(claims.map(({ userId }) => userId));
+        const originalDescription = `Récompense d'invitation — ${tier.requiredInvites} membres de niveau 1`;
+
+        for (const userId of Array.from(claimedUserIds)) {
+          const [originalCredit] = await tx.select({ amount: transactions.amount })
+            .from(transactions)
+            .where(and(
+              eq(transactions.userId, userId),
+              eq(transactions.type, "task_reward"),
+              eq(transactions.description, originalDescription),
+            ))
+            .orderBy(asc(transactions.createdAt))
+            .limit(1);
+          const transactionAmount = originalCredit ? Number(originalCredit.amount) : Number.NaN;
+          const previouslyCredited = Number.isFinite(transactionAmount) && transactionAmount >= 0
+            ? transactionAmount
+            : task.reward;
+          const topUp = calculateInvitationRewardTopUp(previouslyCredited, tier.reward);
+          if (topUp <= 0) continue;
+
+          await tx.update(users)
+            .set({
+              withdrawalBalance: sql`${users.withdrawalBalance} + ${topUp}`,
+              balance: sql`${users.balance} + ${topUp}`,
+            })
+            .where(eq(users.id, userId));
+          await tx.insert(transactions).values({
+            userId,
+            type: "task_reward",
+            amount: topUp.toString(),
+            description: `Complément de récompense d'invitation — ${tier.requiredInvites} membres de niveau 1`,
+          });
+          creditedClaims += 1;
+        }
+
+        await tx.update(tasks).set({ reward: tier.reward }).where(eq(tasks.id, task.id));
+      }
+
+      await tx.insert(platformSettings).values({
+        key: invitationRewardIncreaseMigrationKey,
+        value: "1",
+      });
+    });
+    console.log(`Invitation task rewards updated; ${creditedClaims} previous claims topped up`);
+  }
+
   // Check if payment channels exist
   const existingChannels = await db.select().from(paymentChannels);
   if (existingChannels.length === 0) {
@@ -436,7 +521,7 @@ export async function seed() {
     { key: "level1Commission", value: "25" },
     { key: "level2Commission", value: "3" },
     { key: "level3Commission", value: "2" },
-    { key: "signupBonus", value: "500" },
+    { key: "signupBonus", value: "0" },
     { key: "soleaspayEnabled", value: "false" },
     { key: "soleaspayCountries", value: "" },
     { key: "soleaspayChannelName", value: "Westpay" },

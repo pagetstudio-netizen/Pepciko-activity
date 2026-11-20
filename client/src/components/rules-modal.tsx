@@ -12,7 +12,7 @@ export default function RulesModal({ open, onClose }: RulesModalProps) {
     queryKey: ["/api/settings"],
   });
 
-  const signupBonus = settings?.signupBonus || "500";
+  const signupBonus = Math.max(0, Number.parseInt(settings?.signupBonus ?? "0", 10) || 0);
   const minDeposit = settings?.minDeposit || "4000";
   const minWithdrawal = settings?.minWithdrawal || "1500";
   const withdrawalFees = settings?.withdrawalFees || "18";
@@ -74,7 +74,9 @@ export default function RulesModal({ open, onClose }: RulesModalProps) {
 
             <section>
               <h4 className="font-medium text-foreground mb-2">5. Bonus d'inscription</h4>
-              <p>Chaque nouveau membre reçoit {parseInt(signupBonus).toLocaleString()} FCFA de bonus à l'inscription.</p>
+              <p>{signupBonus > 0
+                ? `Chaque nouveau membre reçoit ${signupBonus.toLocaleString("fr-FR")} FCFA de bonus à l'inscription.`
+                : "Aucun bonus d'inscription n'est actuellement offert."}</p>
             </section>
           </div>
         </ScrollArea>

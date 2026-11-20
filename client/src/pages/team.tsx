@@ -26,6 +26,9 @@ interface TeamStats {
   level1Invested: number;
   level2Invested: number;
   level3Invested: number;
+  level1PaidProductUsers: number;
+  level2PaidProductUsers: number;
+  level3PaidProductUsers: number;
   teamRechargeAmount: number;
 }
 
@@ -76,19 +79,19 @@ export default function TeamPage() {
   const levelData: Record<TeamLevel, { registered: number; active: number; rate: string; revenue: number }> = {
     1: {
       registered: stats?.level1Count ?? 0,
-      active: stats?.level1Invested ?? 0,
+      active: stats?.level1PaidProductUsers ?? 0,
       rate: settings?.level1Commission ?? "0",
       revenue: stats?.level1Commission ?? 0,
     },
     2: {
       registered: stats?.level2Count ?? 0,
-      active: stats?.level2Invested ?? 0,
+      active: stats?.level2PaidProductUsers ?? 0,
       rate: settings?.level2Commission ?? "0",
       revenue: stats?.level2Commission ?? 0,
     },
     3: {
       registered: stats?.level3Count ?? 0,
-      active: stats?.level3Invested ?? 0,
+      active: stats?.level3PaidProductUsers ?? 0,
       rate: settings?.level3Commission ?? "0",
       revenue: stats?.level3Commission ?? 0,
     },
