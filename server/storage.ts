@@ -11,7 +11,12 @@ import { calculateNetAdminBalanceCredit } from "./admin-balance-credit";
 import { INVITATION_TASK_KEY_PREFIX, countQualifiedDirectReferrals } from "./invitation-tasks";
 import { summarizeTeamProductPurchases } from "./team-investment-stats";
 import { resolveSignupBonus } from "./signup-bonus";
-import { calculateMaturityPayout } from "./product-payout";
+import {
+  calculateDailyPayoutCatchUp,
+  calculateDailyProductPayout,
+  calculateMaturityPayout,
+  getProductPayoutMode,
+} from "./product-payout";
 import { isUserProductRevoked } from "./product-revocation";
 import {
   getHighestStablePurchasePrice,
@@ -1140,7 +1145,7 @@ export class DatabaseStorage implements IStorage {
           purchaseProductType: product.productType,
           purchaseLaunchDate: product.productType === "activity" ? product.launchDate : null,
           purchaseLaunchTime: product.productType === "activity" ? product.launchTime : null,
-          payoutMode: "maturity" as const,
+          payoutMode: getProductPayoutMode(product.productType),
           purchasePrepaidEarnings: 0,
         })),
       ).returning();
@@ -1279,7 +1284,26 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(userProducts.isActive, true), sql`${userProducts.daysRemaining} > 0`));
 
     const now = new Date();
-    
+    const creditWithdrawalEarnings = async (
+      tx: any,
+      userId: number,
+      amount: number,
+      description: string,
+    ) => {
+      if (amount <= 0) return;
+      await this.adjustBalance(userId, "withdrawal", amount, tx);
+      await tx.update(users).set({
+        todayEarnings: sql`${users.todayEarnings} + ${amount}`,
+        totalEarnings: sql`${users.totalEarnings} + ${amount}`,
+      }).where(eq(users.id, userId));
+      await tx.insert(transactions).values({
+        userId,
+        type: "earning",
+        amount: amount.toFixed(2),
+        description,
+      });
+    };
+
     for (const { userProduct, product, user } of activeProducts) {
       try {
         const purchaseDate = userProduct.purchaseDate ? new Date(userProduct.purchaseDate) : null;
@@ -1292,6 +1316,7 @@ export class DatabaseStorage implements IStorage {
         const cyclesSinceLastEarning = Math.floor(msSinceLastEarning / (24 * 60 * 60 * 1000));
         const dailyEarnings = Number(userProduct.purchaseDailyEarnings ?? product.dailyEarnings);
         const cycleDays = Number(userProduct.purchaseCycleDays ?? product.cycleDays);
+        const productType = userProduct.purchaseProductType ?? product.productType;
         const productName = userProduct.purchaseProductName ?? product.name;
 
         const totalReturn = Number(
@@ -1307,6 +1332,7 @@ export class DatabaseStorage implements IStorage {
             )),
           ),
         );
+        const expectedPayoutMode = getProductPayoutMode(productType);
         const positionCondition = and(
           eq(userProducts.id, userProduct.id),
           eq(userProducts.isActive, true),
@@ -1316,17 +1342,42 @@ export class DatabaseStorage implements IStorage {
             : isNull(userProducts.lastEarningDate),
         );
 
-        if (cyclesSinceLastEarning < 1 || cycleDays < 1) {
-          if (userProduct.payoutMode !== "maturity" || userProduct.purchasePrepaidEarnings == null) {
-            await db.update(userProducts)
+        if (cycleDays < 1) continue;
+
+        if (userProduct.payoutMode !== expectedPayoutMode || userProduct.purchasePrepaidEarnings == null) {
+          const alreadyPaid = userProduct.purchasePrepaidEarnings == null
+            ? userProduct.payoutMode === "daily" ? accruedSoFar : 0
+            : prepaidEarnings;
+          const migrationCatchUp = expectedPayoutMode === "daily"
+            ? calculateDailyPayoutCatchUp(accruedSoFar, alreadyPaid)
+            : 0;
+          const normalizedPaid = Math.min(
+            totalReturn,
+            Math.max(accruedSoFar, alreadyPaid),
+          );
+
+          await db.transaction(async (tx) => {
+            const [normalizedPosition] = await tx.update(userProducts)
               .set({
-                payoutMode: "maturity",
-                purchasePrepaidEarnings: prepaidEarnings,
+                payoutMode: expectedPayoutMode,
+                purchasePrepaidEarnings: normalizedPaid,
+                totalEarned: normalizedPaid.toFixed(2),
               })
-              .where(positionCondition);
-          }
+              .where(positionCondition)
+              .returning({ id: userProducts.id });
+
+            if (!normalizedPosition) return;
+            await creditWithdrawalEarnings(
+              tx,
+              user.id,
+              migrationCatchUp,
+              `Rattrapage des gains journaliers — ${productName}`,
+            );
+          });
           continue;
         }
+
+        if (cyclesSinceLastEarning < 1) continue;
 
         const cyclesToAccrue = Math.min(cyclesSinceLastEarning, userProduct.daysRemaining);
         if (cyclesToAccrue < 1) continue;
@@ -1334,8 +1385,44 @@ export class DatabaseStorage implements IStorage {
         const newDaysRemaining = Math.max(0, userProduct.daysRemaining - cyclesToAccrue);
         const newLastEarningDate = new Date(lastEarning.getTime() + cyclesToAccrue * 24 * 60 * 60 * 1000);
         const newTotalEarned = Math.min(totalReturn, accruedSoFar + dailyEarnings * cyclesToAccrue);
+        const completesCycle = daysSincePurchase >= cycleDays || newDaysRemaining === 0;
 
-        if (daysSincePurchase >= cycleDays || newDaysRemaining === 0) {
+        if (userProduct.payoutMode === "daily") {
+          const payoutAmount = calculateDailyProductPayout(
+            totalReturn,
+            prepaidEarnings,
+            dailyEarnings,
+            cyclesToAccrue,
+            completesCycle,
+          );
+          const newPaidEarnings = Math.min(totalReturn, prepaidEarnings + payoutAmount);
+          const maturityDate = new Date(purchaseDate.getTime() + cycleDays * 24 * 60 * 60 * 1000);
+
+          await db.transaction(async (tx) => {
+            const [paidPosition] = await tx.update(userProducts)
+              .set({
+                payoutMode: "daily",
+                purchasePrepaidEarnings: newPaidEarnings,
+                lastEarningDate: completesCycle ? maturityDate : newLastEarningDate,
+                daysRemaining: newDaysRemaining,
+                totalEarned: newPaidEarnings.toFixed(2),
+                isActive: !completesCycle,
+              })
+              .where(positionCondition)
+              .returning({ id: userProducts.id });
+
+            if (!paidPosition) return;
+            await creditWithdrawalEarnings(
+              tx,
+              user.id,
+              payoutAmount,
+              `Gains journaliers — ${productName}`,
+            );
+          });
+          continue;
+        }
+
+        if (completesCycle) {
           const maturityDate = new Date(purchaseDate.getTime() + cycleDays * 24 * 60 * 60 * 1000);
           const payoutAmount = calculateMaturityPayout(totalReturn, prepaidEarnings);
           await db.transaction(async (tx) => {
@@ -1353,18 +1440,12 @@ export class DatabaseStorage implements IStorage {
 
             if (!completedPosition || payoutAmount <= 0) return;
 
-            await this.adjustBalance(user.id, "withdrawal", payoutAmount, tx);
-            await tx.update(users).set({
-              todayEarnings: sql`${users.todayEarnings} + ${payoutAmount}`,
-              totalEarnings: sql`${users.totalEarnings} + ${payoutAmount}`,
-            }).where(eq(users.id, user.id));
-
-            await tx.insert(transactions).values({
-              userId: user.id,
-              type: "earning",
-              amount: payoutAmount.toFixed(2),
-              description: `Gains à l’échéance — ${productName}`,
-            });
+            await creditWithdrawalEarnings(
+              tx,
+              user.id,
+              payoutAmount,
+              `Gains à l’échéance — ${productName}`,
+            );
           });
         } else {
           await db.update(userProducts)

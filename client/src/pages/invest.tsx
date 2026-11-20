@@ -36,6 +36,7 @@ interface ProductWithOwnership extends Product {
 interface PurchaseVariables {
   productId: number;
   quantity: number;
+  productType: ProductType;
 }
 
 export default function InvestPage() {
@@ -104,12 +105,17 @@ export default function InvestPage() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user/products"] });
       refreshUser();
       closePurchaseModal();
-      toast({ title: "Produit acheté !", description: "Vos gains seront versés en une seule fois à la fin de la période." });
+      toast({
+        title: "Produit acheté !",
+        description: variables.productType === "wellness"
+          ? "Les gains Bien-être seront crédités automatiquement sur votre solde de retrait toutes les 24 heures."
+          : "Les gains seront crédités sur votre solde de retrait à la fin de la période.",
+      });
     },
     onError: (error: any) => {
       const message = error.message || "L’achat n’a pas pu être effectué.";
@@ -207,7 +213,6 @@ export default function InvestPage() {
               const wellnessLocked = product.productType === "wellness" && product.canPurchaseWellness === false;
               const daily = Number(product.dailyEarnings || 0);
               const total = Number(product.totalReturn || daily * Number(product.cycleDays || 90));
-              const isMaturityProduct = product.productType === "activity";
               const totalRevenue = product.productType === "wellness"
                 ? getWellnessCardTotalRevenue(Number(product.price), total)
                 : total;
@@ -302,7 +307,10 @@ export default function InvestPage() {
         const daily = Number(confirmProduct.dailyEarnings || 0);
         const total = Number(confirmProduct.totalReturn || daily * Number(confirmProduct.cycleDays || 90));
         const duration = Number(confirmProduct.cycleDays || 90);
-        const isMaturityProduct = confirmProduct.productType !== "stable";
+        const isMaturityProduct = confirmProduct.productType === "activity";
+        const gainsLabel = confirmProduct.productType === "wellness"
+          ? "Gains journaliers"
+          : isMaturityProduct ? "Gains à l’échéance" : "Gains quotidiens";
         const productCategoryLabel = confirmProduct.productType === "activity"
           ? "Activité"
           : confirmProduct.productType === "wellness" ? "Bien-être" : "Écurie";
@@ -325,6 +333,7 @@ export default function InvestPage() {
           purchaseMutation.mutate({
             productId: confirmProduct.id,
             quantity: purchaseQuantity,
+            productType: confirmProduct.productType,
           });
         };
 
@@ -363,7 +372,7 @@ export default function InvestPage() {
                   <dd className="invest-modal-price">{formatFcfa(price)}</dd>
                 </div>
                 <div className="invest-modal-row">
-                  <dt>{isMaturityProduct ? "Gains à l’échéance" : "Gains quotidiens"}</dt>
+                  <dt>{gainsLabel}</dt>
                   <dd>{formatFcfa((isMaturityProduct ? total : daily) * purchaseQuantity)}</dd>
                 </div>
                 <div className="invest-modal-row">

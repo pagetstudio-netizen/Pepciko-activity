@@ -1406,8 +1406,17 @@ export async function registerRoutes(
         ),
         totalReturn: up.userProduct.purchaseTotalReturn ?? up.product.totalReturn,
         status: up.userProduct.isActive ? 'active' : 'completed',
-        productType: up.product.productType,
-        product: up.product
+        productType: up.userProduct.purchaseProductType ?? up.product.productType,
+        product: {
+          ...up.product,
+          name: up.userProduct.purchaseProductName ?? up.product.name,
+          price: up.userProduct.purchasePrice ?? up.product.price,
+          dailyEarnings: up.userProduct.purchaseDailyEarnings ?? up.product.dailyEarnings,
+          cycleDays: up.userProduct.purchaseCycleDays ?? up.product.cycleDays,
+          totalReturn: up.userProduct.purchaseTotalReturn ?? up.product.totalReturn,
+          imageUrl: up.userProduct.purchaseImageUrl ?? up.product.imageUrl,
+          productType: up.userProduct.purchaseProductType ?? up.product.productType,
+        },
         }));
       
       res.json(formattedProducts);
@@ -1416,13 +1425,13 @@ export async function registerRoutes(
     }
   });
 
-  // Product earnings are only credited once the position reaches maturity.
+  // Product earnings are credited automatically according to the product category.
   app.post("/api/user/collect-earnings", requireAuth, async (req, res) => {
     return res.json({
       success: true,
       collected: 0,
       productsCollected: 0,
-      message: "Les gains des produits sont versés uniquement à l’échéance.",
+      message: "Les gains Bien-être sont crédités automatiquement toutes les 24 heures ; les gains stables et d’activité sont versés à l’échéance.",
     });
   });
 

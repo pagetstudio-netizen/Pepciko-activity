@@ -56,9 +56,12 @@ export default function ProductDetailsPage() {
         throw new Error(data.message || "L'achat n'a pas pu être effectué.");
       }
       await response.json();
-      return { isFree: Boolean(selectedProduct.isFree) };
+      return {
+        isFree: Boolean(selectedProduct.isFree),
+        productType: selectedProduct.productType,
+      };
     },
-    onSuccess: async ({ isFree }) => {
+    onSuccess: async ({ isFree, productType }) => {
       await queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/user/products"] });
       refreshUser();
@@ -67,7 +70,9 @@ export default function ProductDetailsPage() {
         title: isFree ? "Produit réclamé !" : "Produit acheté !",
         description: isFree
           ? "Votre produit gratuit a été ajouté à votre compte."
-          : "Vos gains seront versés en une seule fois à la fin de la période.",
+          : productType === "wellness"
+            ? "Les gains Bien-être seront crédités automatiquement sur votre solde de retrait toutes les 24 heures."
+            : "Les gains seront crédités sur votre solde de retrait à la fin de la période.",
       });
     },
     onError: (purchaseError: Error) => {
@@ -161,12 +166,16 @@ export default function ProductDetailsPage() {
 
           <div className="product-detail-metrics" aria-label="Détails des gains">
             <div className="product-detail-metric-row">
-              <span>{product.isFree ? "Bonus quotidien :" : "Gain journalier calculé :"}</span>
+              <span>{product.isFree
+                ? "Bonus quotidien :"
+                : product.productType === "wellness" ? "Gain journalier :" : "Gain journalier calculé :"}</span>
               <strong>{formatFcfa(dailyEarnings)}</strong>
             </div>
             {product.productType !== "stable" && (
               <div className="product-detail-metric-row">
-                <span>{product.isFree ? "Gain total :" : "Gain total à l’échéance :"}</span>
+                <span>{product.isFree
+                  ? "Gain total :"
+                  : product.productType === "wellness" ? "Gain total du cycle :" : "Gain total à l’échéance :"}</span>
                 <strong>{formatFcfa(totalReturn)}</strong>
               </div>
             )}
@@ -185,7 +194,9 @@ export default function ProductDetailsPage() {
           <p className="product-detail-note">
             {product.isFree
               ? "Le bonus gratuit peut être réclamé selon les règles affichées dans l’application."
-              : "Le gain journalier sert au calcul du total. Le montant total sera versé en une seule fois à la fin de la période."}
+              : product.productType === "wellness"
+                ? "Les gains journaliers sont crédités automatiquement sur votre solde de retrait toutes les 24 heures."
+                : "Le gain journalier sert au calcul du total. Le montant total sera versé en une seule fois à la fin de la période."}
           </p>
         </section>
       </div>

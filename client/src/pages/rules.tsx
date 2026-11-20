@@ -34,7 +34,8 @@ export default function RulesPage() {
           <h2 className="text-[15px] font-bold text-[#7fc9ff] border-l-2 border-[#7fc9ff] pl-2">1. Investissement</h2>
           <ul className="list-disc pl-5 space-y-1">
             <li>Chaque utilisateur peut posséder plusieurs produits d'investissement simultanément.</li>
-            <li>Pour les produits stables et d’activité, le gain journalier sert au calcul du total ; les gains sont versés en une seule fois à la fin de la période du produit.</li>
+            <li>Pour les produits Bien-être, les gains journaliers sont crédités automatiquement sur le solde de retrait toutes les 24 heures.</li>
+            <li>Pour les produits stables et d’activité, les gains sont versés en une seule fois sur le solde de retrait à la fin de la période.</li>
             <li>Le cycle d'investissement standard est de 80 jours, sauf indication contraire pour les produits spéciaux.</li>
           </ul>
         </section>

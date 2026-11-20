@@ -171,10 +171,12 @@ export default function MyProductsPage() {
                     </div>
                   </div>
                   <footer className="product-received">
-                    {up.status === "active"
-                      ? `Versement unique à l’échéance : ${formatCurrency(remainingAtMaturity)}`
-                      : `Gains totaux du produit : ${formatCurrency(totalReturn)}`}
-                    {prepaidEarnings > 0 && (
+                    {up.status === "active" && up.product?.productType === "wellness"
+                      ? `Crédit automatique toutes les 24 h : ${formatCurrency(up.product.dailyEarnings)} par jour`
+                      : up.status === "active"
+                        ? `Versement unique à l’échéance : ${formatCurrency(remainingAtMaturity)}`
+                        : `Gains totaux du produit : ${formatCurrency(totalReturn)}`}
+                    {prepaidEarnings > 0 && up.product?.productType !== "wellness" && (
                       <span> · Déjà versés avant la bascule : {formatCurrency(prepaidEarnings)}</span>
                     )}
                   </footer>

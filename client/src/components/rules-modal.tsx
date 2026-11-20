@@ -57,7 +57,8 @@ export default function RulesModal({ open, onClose }: RulesModalProps) {
               <h4 className="font-medium text-foreground mb-2">3. Produits</h4>
               <ul className="space-y-1">
                 <li>- Cycle standard : 80 jours</li>
-                <li>- Les gains des produits sont crédités en une seule fois à l’échéance</li>
+                <li>- Bien-être : gains crédités automatiquement sur le solde de retrait toutes les 24 heures</li>
+                <li>- Stable et activité : gains crédités sur le solde de retrait à l’échéance</li>
                 <li>- Produit gratuit : réclamez 50 FCFA/jour</li>
               </ul>
             </section>
