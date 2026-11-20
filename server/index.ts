@@ -10,9 +10,37 @@ import {
   mapAshtechStatus,
 } from "./ashtechpay";
 import { sendDailyTelegramSummary, startTelegramBot } from "./telegram";
+import { MemoryWindowRateLimiter } from "./security-rate-limit";
 
 const app = express();
 const httpServer = createServer(app);
+app.set("trust proxy", 1);
+
+const apiTrafficLimiter = new MemoryWindowRateLimiter();
+app.use("/api", (req, res, next) => {
+  const requestPath = req.originalUrl.split("?")[0];
+  const isWebhook = requestPath.startsWith("/api/webhooks/");
+  const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+  const decision = apiTrafficLimiter.consume(
+    `api:${clientIp}`,
+    isWebhook ? 600 : 240,
+    60_000,
+  );
+  if (!decision.allowed) {
+    res.setHeader("Retry-After", String(Math.max(1, Math.ceil(decision.retryAfterMs / 1000))));
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(429).json({ message: "Trop de demandes. Réessayez dans une minute." });
+  }
+  if (req.method === "POST" && requestPath.replace(/\/+$/, "") === "/api/deposits") {
+    const uploadDecision = apiTrafficLimiter.consume(`deposit-body:${clientIp}`, 5, 60_000);
+    if (!uploadDecision.allowed) {
+      res.setHeader("Retry-After", String(Math.max(1, Math.ceil(uploadDecision.retryAfterMs / 1000))));
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(429).json({ message: "Trop de demandes de dépôt. Réessayez dans une minute." });
+    }
+  }
+  return next();
+});
 
 declare module "http" {
   interface IncomingMessage {
@@ -20,16 +48,21 @@ declare module "http" {
   }
 }
 
-app.use(
-  express.json({
-    limit: "15mb",
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
+const captureRawBody = (req: express.Request, _res: express.Response, buf: Buffer) => {
+  req.rawBody = buf;
+};
+const standardJsonParser = express.json({ limit: "1mb", verify: captureRawBody });
+// Manual deposit screenshots are the only large JSON payload in the API.
+const manualDepositJsonParser = express.json({ limit: "8mb", verify: captureRawBody });
+app.use((req, res, next) => {
+  const requestPath = req.originalUrl.split("?")[0].replace(/\/+$/, "");
+  const parser = req.method === "POST" && requestPath === "/api/deposits"
+    ? manualDepositJsonParser
+    : standardJsonParser;
+  return parser(req, res, next);
+});
 
-app.use(express.urlencoded({ extended: false, limit: "15mb" }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -42,39 +75,14 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-function redactLogValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(redactLogValue);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, child]) => {
-      if (/password|secret|token|screenshot|accountNumber|adminPin/i.test(key)) {
-        return [key, "[redacted]"];
-      }
-      return [key, redactLogValue(child)];
-    }),
-  );
-}
-
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
 
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-          logLine += ` :: ${JSON.stringify(redactLogValue(capturedJsonResponse))}`;
-      }
-
-      log(logLine);
+      log(`${req.method} ${path} ${res.statusCode} in ${duration}ms`);
     }
   });
 
@@ -115,17 +123,24 @@ app.use((req, res, next) => {
   scheduleTelegramSummary();
 
   // Process daily earnings and staking releases
+  let isProcessingEarnings = false;
   const processEarningsInterval = async () => {
+    if (isProcessingEarnings) return;
+    isProcessingEarnings = true;
     try {
-      await storage.processEarnings();
-      log("Daily earnings processed successfully", "earnings");
-    } catch (error) {
-      console.error("Error processing daily earnings:", error);
-    }
-    try {
-      await storage.releaseMaturedStakings();
-    } catch (error) {
-      console.error("Error releasing stakings:", error);
+      try {
+        await storage.processEarnings();
+        log("Daily earnings processed successfully", "earnings");
+      } catch (error) {
+        console.error("Error processing daily earnings:", error);
+      }
+      try {
+        await storage.releaseMaturedStakings();
+      } catch (error) {
+        console.error("Error releasing stakings:", error);
+      }
+    } finally {
+      isProcessingEarnings = false;
     }
   };
   
@@ -150,8 +165,10 @@ app.use((req, res, next) => {
   // Reconcile AshtechPay deposits on the server, independently of the user's
   // browser. A pending transaction is checked until three hours old; at the
   // deadline one final provider check is made before marking it rejected.
+  let isReconcilingAshtech = false;
   const reconcileAshtechDeposits = async () => {
-    if (!isAshtechConfigured()) return;
+    if (!isAshtechConfigured() || isReconcilingAshtech) return;
+    isReconcilingAshtech = true;
     try {
       const pendingDeposits = await storage.getPendingAshtechDeposits();
       for (const deposit of pendingDeposits) {
@@ -200,6 +217,8 @@ app.use((req, res, next) => {
       }
     } catch (error) {
       console.error("[ashtechpay] reconciliation cycle failed:", error);
+    } finally {
+      isReconcilingAshtech = false;
     }
   };
   setTimeout(reconcileAshtechDeposits, 15000);
@@ -207,15 +226,18 @@ app.use((req, res, next) => {
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    console.error("Internal Server Error:", err);
+    console.error("Unhandled request error:", {
+      status,
+      type: typeof err?.name === "string" ? err.name : "Error",
+    });
 
     if (res.headersSent) {
       return next(err);
     }
 
-    return res.status(status).json({ message });
+    return res.status(status).json({
+      message: status >= 500 ? "Erreur interne du serveur." : err.message || "Requête invalide.",
+    });
   });
 
   // importantly only setup vite in development and after

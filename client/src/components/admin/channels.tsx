@@ -21,7 +21,7 @@ import EmptyState from "@/components/empty-state";
 const channelSchema = z.object({
   name: z.string().min(2, "Nom requis"),
   redirectUrl: z.string().min(5, "URL requise"),
-  isApi: z.boolean().default(false),
+  isApi: z.boolean(),
 });
 
 type ChannelForm = z.infer<typeof channelSchema>;

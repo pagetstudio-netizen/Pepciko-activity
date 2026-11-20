@@ -1,12 +1,12 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { randomInt, randomUUID } from "node:crypto";
+import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import session from "express-session";
 import multer from "multer";
 import sharp from "sharp";
 import { storage } from "./storage";
 import { databaseUrl, pool } from "./db";
-import { registerSchema, loginSchema, depositSchema, walletSchema, phoneNumberSchema, blogPostSchema, blogApprovalSchema, transactionPasswordSetupSchema, type Deposit, type Product, type Withdrawal } from "@shared/schema";
+import { registerSchema, loginSchema, depositSchema, walletSchema, phoneNumberSchema, blogPostSchema, blogApprovalSchema, transactionPasswordSetupSchema, type Deposit, type Product, type User, type Withdrawal } from "@shared/schema";
 import {
   changeUserPassword,
   hashPassword,
@@ -65,6 +65,8 @@ import {
 } from "../shared/wellness-product-names";
 import { isValidWellnessCycleDays } from "../shared/wellness-product-policy";
 import { calculateVipLevels } from "../shared/vip-levels";
+import { MemoryWindowRateLimiter } from "./security-rate-limit";
+import { signSecurityPayload, verifySecurityPayload } from "./security-tokens";
 
 interface AuthCaptchaSessionEntry {
   readyAt: number | null;
@@ -273,28 +275,317 @@ function parseDepositSupportReportFiles(req: Request, res: Response, next: NextF
   });
 }
 
-// --- Brute-force protection (in-memory) ---
-const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
-const MAX_LOGIN_ATTEMPTS = 5;
-const BLOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const securityRateLimiter = new MemoryWindowRateLimiter();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_IP_LIMIT = 20;
+const LOGIN_ACCOUNT_LIMIT = 10;
+const AUTH_ENDPOINT_WINDOW_MS = 60 * 60 * 1000;
+const AUTH_REGISTER_IP_LIMIT = 5;
 
 function getClientKey(req: Request): string {
-  const forwarded = req.headers["x-forwarded-for"];
-  const ip = typeof forwarded === "string" ? forwarded.split(",")[0].trim() : req.socket.remoteAddress || "unknown";
-  return ip;
+  // Express derives req.ip from the trusted proxy chain configured below.
+  // Never read X-Forwarded-For directly: clients can forge that header.
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function getLoginRateLimitKeys(
+  req: Request,
+  userId?: number,
+): { ipKey: string; accountKey: string | null; userKey: string | null } {
+  const body = req.body && typeof req.body === "object"
+    ? req.body as Record<string, unknown>
+    : {};
+  const country = typeof body.country === "string"
+    ? body.country.trim().toUpperCase().slice(0, 3)
+    : "";
+  const rawPhone = typeof body.phone === "string" ? body.phone.slice(0, 32) : "";
+  const digits = rawPhone.replace(/\D/g, "").slice(0, 15);
+  if (!/^[A-Z]{2,3}$/.test(country) || digits.length < 8) {
+    return {
+      ipKey: `login:ip:${getClientKey(req)}`,
+      accountKey: null,
+      userKey: Number.isSafeInteger(userId) ? `login:user:${userId}` : null,
+    };
+  }
+
+  const normalizedPhone = country === "BJ"
+    ? normalizeBeninPhone(rawPhone) || digits
+    : digits;
+  const accountDigest = createHmac("sha256", sessionSecret as string)
+    .update(`${country}:${normalizedPhone}`)
+    .digest("hex");
+  return {
+    ipKey: `login:ip:${getClientKey(req)}`,
+    accountKey: `login:account:${accountDigest}`,
+    userKey: Number.isSafeInteger(userId) ? `login:user:${userId}` : null,
+  };
+}
+
+function checkBruteForce(req: Request, res: Response, userId?: number): boolean {
+  const { ipKey, accountKey, userKey } = getLoginRateLimitKeys(req, userId);
+  const decisions = [
+    securityRateLimiter.check(ipKey, LOGIN_IP_LIMIT, LOGIN_WINDOW_MS),
+    ...(accountKey
+      ? [securityRateLimiter.check(accountKey, LOGIN_ACCOUNT_LIMIT, LOGIN_WINDOW_MS)]
+      : []),
+    ...(userKey
+      ? [securityRateLimiter.check(userKey, LOGIN_ACCOUNT_LIMIT, LOGIN_WINDOW_MS)]
+      : []),
+  ];
+  const blocked = decisions.filter((decision) => !decision.allowed);
+  if (blocked.length === 0) return false;
+
+  const retryAfterMs = Math.max(...blocked.map((decision) => decision.retryAfterMs));
+  res.setHeader("Retry-After", String(Math.max(1, Math.ceil(retryAfterMs / 1000))));
+  res.setHeader("Cache-Control", "no-store");
+  res.status(429).json({ message: "Trop de tentatives. Réessayez plus tard." });
+  return true;
+}
+
+function recordFailedAttempt(req: Request, userId?: number): void {
+  const { ipKey, accountKey, userKey } = getLoginRateLimitKeys(req, userId);
+  const ipBefore = securityRateLimiter.check(ipKey, LOGIN_IP_LIMIT, LOGIN_WINDOW_MS);
+  const accountBefore = accountKey
+    ? securityRateLimiter.check(accountKey, LOGIN_ACCOUNT_LIMIT, LOGIN_WINDOW_MS)
+    : null;
+  const userBefore = userKey
+    ? securityRateLimiter.check(userKey, LOGIN_ACCOUNT_LIMIT, LOGIN_WINDOW_MS)
+    : null;
+
+  securityRateLimiter.record(ipKey, LOGIN_WINDOW_MS);
+  if (accountKey) securityRateLimiter.record(accountKey, LOGIN_WINDOW_MS);
+  if (userKey) securityRateLimiter.record(userKey, LOGIN_WINDOW_MS);
+
+  if (
+    ipBefore.remaining === 1 ||
+    accountBefore?.remaining === 1 ||
+    userBefore?.remaining === 1
+  ) {
+    void sendTelegramSecurityAlert(
+      getClientKey(req),
+      "Le seuil de tentatives de connexion a été atteint. Réessayez dans 15 minutes.",
+    ).catch((error) => console.error("[telegram] security notification failed:", error.message));
+  }
+}
+
+function clearFailedAttempts(req: Request, userId?: number): void {
+  const { accountKey, userKey } = getLoginRateLimitKeys(req, userId);
+  if (accountKey) securityRateLimiter.clear(accountKey);
+  if (userKey) securityRateLimiter.clear(userKey);
+}
+
+function consumeEndpointLimit(
+  req: Request,
+  res: Response,
+  scope: string,
+  limit: number,
+  windowMs: number,
+): boolean {
+  const decision = securityRateLimiter.consume(
+    `${scope}:${getClientKey(req)}`,
+    limit,
+    windowMs,
+  );
+  if (decision.allowed) return false;
+  res.setHeader("Retry-After", String(Math.max(1, Math.ceil(decision.retryAfterMs / 1000))));
+  res.setHeader("Cache-Control", "no-store");
+  res.status(429).json({ message: "Trop de demandes. Réessayez plus tard." });
+  return true;
+}
+
+function consumeUserLimit(
+  req: Request,
+  res: Response,
+  scope: string,
+  limit: number,
+  windowMs: number,
+): boolean {
+  const userId = req.session.userId;
+  if (!Number.isSafeInteger(userId) || !userId) return false;
+  const decision = securityRateLimiter.consume(
+    `${scope}:user:${userId}`,
+    limit,
+    windowMs,
+  );
+  if (decision.allowed) return false;
+  res.setHeader("Retry-After", String(Math.max(1, Math.ceil(decision.retryAfterMs / 1000))));
+  res.setHeader("Cache-Control", "no-store");
+  res.status(429).json({ message: "Trop de demandes pour ce compte. Réessayez plus tard." });
+  return true;
+}
+
+function toClientUser(user: User) {
+  const { password: _password, adminPin: _adminPin, ...safeUser } = user;
+  return safeUser;
+}
+
+const sessionAccountCache = new Map<number, { allowed: boolean; expiresAt: number }>();
+const SESSION_ACCOUNT_CACHE_TTL_MS = 5_000;
+
+async function isSessionAccountAllowed(userId: number): Promise<boolean> {
+  const now = Date.now();
+  const cached = sessionAccountCache.get(userId);
+  if (cached && cached.expiresAt > now) return cached.allowed;
+
+  const user = await storage.getUser(userId);
+  const allowed = Boolean(user && !user.isBanned);
+  if (sessionAccountCache.size > 10_000) {
+    for (const [id, entry] of Array.from(sessionAccountCache.entries())) {
+      if (entry.expiresAt <= now) sessionAccountCache.delete(id);
+    }
+    while (sessionAccountCache.size > 10_000) {
+      const oldestId = sessionAccountCache.keys().next().value as number | undefined;
+      if (oldestId === undefined) break;
+      sessionAccountCache.delete(oldestId);
+    }
+  }
+  sessionAccountCache.set(userId, { allowed, expiresAt: now + SESSION_ACCOUNT_CACHE_TTL_MS });
+  return allowed;
+}
+
+function destroySession(req: Request, res: Response): void {
+  req.session.destroy((error) => {
+    if (error) console.error("[security] failed to destroy an invalid session");
+  });
+  res.clearCookie("connect.sid", {
+    path: "/",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  });
+}
+
+async function establishAuthenticatedSession(req: Request, userId: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    req.session.regenerate((error) => error ? reject(error) : resolve());
+  });
+  req.session.userId = userId;
+  await new Promise<void>((resolve, reject) => {
+    req.session.save((error) => error ? reject(error) : resolve());
+  });
+}
+
+function apiRequestPath(req: Request): string {
+  return (req.originalUrl.split("?")[0] || req.path).replace(/\/+$/, "") || "/";
+}
+
+function trustedOrigins(req: Request): Set<string> {
+  const origins = new Set<string>();
+  const addOrigin = (value: string | undefined, defaultProtocol = "https:") => {
+    if (!value?.trim()) return;
+    try {
+      const candidate = value.includes("://") ? value : `${defaultProtocol}//${value}`;
+      origins.add(new URL(candidate).origin);
+    } catch {
+      // Ignore malformed deployment configuration; it never becomes trusted.
+    }
+  };
+
+  addOrigin(`${req.protocol}://${req.get("host")}`, req.protocol);
+  addOrigin(process.env.PUBLIC_APP_URL);
+  addOrigin(process.env.REPLIT_DEV_DOMAIN);
+  for (const domain of (process.env.REPLIT_DOMAINS || "").split(",")) {
+    addOrigin(domain.trim());
+  }
+  return origins;
+}
+
+function isTrustedBrowserOrigin(req: Request): boolean {
+  const source = req.get("origin") || req.get("referer");
+  if (!source) return false;
+  try {
+    return trustedOrigins(req).has(new URL(source).origin);
+  } catch {
+    return false;
+  }
+}
+
+function signSendavaOtpTicket(otpToken: string, userId: number, depositId: number): string {
+  return signSecurityPayload({
+    purpose: "sendavapay-otp",
+    otpToken,
+    userId,
+    depositId,
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  }, sessionSecret as string);
+}
+
+function verifySendavaOtpTicket(value: unknown) {
+  const payload = verifySecurityPayload<{
+    purpose?: unknown;
+    otpToken?: unknown;
+    userId?: unknown;
+    depositId?: unknown;
+    expiresAt?: unknown;
+  }>(value, sessionSecret as string);
+  if (
+    payload?.purpose !== "sendavapay-otp" ||
+    typeof payload.otpToken !== "string" ||
+    !payload.otpToken ||
+    !Number.isSafeInteger(payload.userId) ||
+    !Number.isSafeInteger(payload.depositId) ||
+    typeof payload.expiresAt !== "number" ||
+    payload.expiresAt <= Date.now()
+  ) {
+    return null;
+  }
+  return {
+    otpToken: payload.otpToken,
+    userId: payload.userId as number,
+    depositId: payload.depositId as number,
+  };
+}
+
+function createWestPayReturnState(depositId: number): string {
+  return signSecurityPayload({
+    purpose: "westpay-return",
+    depositId,
+    expiresAt: Date.now() + 3 * 60 * 60 * 1000,
+  }, sessionSecret as string);
+}
+
+function readWestPayReturnState(value: unknown): number | null {
+  const payload = verifySecurityPayload<{
+    purpose?: unknown;
+    depositId?: unknown;
+    expiresAt?: unknown;
+  }>(value, sessionSecret as string);
+  if (
+    payload?.purpose !== "westpay-return" ||
+    !Number.isSafeInteger(payload.depositId) ||
+    typeof payload.expiresAt !== "number" ||
+    payload.expiresAt <= Date.now()
+  ) {
+    return null;
+  }
+  return payload.depositId as number;
 }
 
 function getPublicBaseUrl(req: Request): string {
   const configuredUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
-  if (configuredUrl) return configuredUrl;
+  if (configuredUrl) {
+    const parsed = new URL(configuredUrl);
+    if (process.env.NODE_ENV === "production" && parsed.protocol !== "https:") {
+      throw new Error("PUBLIC_APP_URL must use HTTPS in production.");
+    }
+    return parsed.origin;
+  }
 
   const devDomain = process.env.REPLIT_DEV_DOMAIN?.trim();
   if (devDomain) return `https://${devDomain}`;
 
-  const forwardedProto = String(req.headers["x-forwarded-proto"] || req.protocol)
-    .split(",")[0]
-    .trim();
-  return `${forwardedProto}://${req.get("host")}`;
+  const productionDomain = (process.env.REPLIT_DOMAINS || "")
+    .split(",")
+    .map((domain) => domain.trim())
+    .find(Boolean);
+  if (productionDomain) return `https://${productionDomain}`;
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("PUBLIC_APP_URL must be configured for production callbacks.");
+  }
+  const host = req.get("host");
+  if (!host) throw new Error("Request host is unavailable.");
+  return `${req.protocol}://${host}`;
 }
 
 function getPaymentWebhookBaseUrl(req: Request): string {
@@ -412,38 +703,6 @@ async function reconcilePpayProsPayin(deposit: Deposit, stateValue: unknown): Pr
     return storage.updateDeposit(deposit.id, { status: "processing" });
   }
   throw new Error("État de paiement PPayPros inconnu.");
-}
-
-function checkBruteForce(req: Request, res: Response): boolean {
-  const key = getClientKey(req);
-  const now = Date.now();
-  const record = loginAttempts.get(key);
-  if (record && record.blockedUntil > now) {
-    const minutesLeft = Math.ceil((record.blockedUntil - now) / 60000);
-    res.status(429).json({ message: `Trop de tentatives. Réessayez dans ${minutesLeft} minute(s).` });
-    return true;
-  }
-  return false;
-}
-
-function recordFailedAttempt(req: Request) {
-  const key = getClientKey(req);
-  const now = Date.now();
-  const record = loginAttempts.get(key) || { count: 0, blockedUntil: 0 };
-  record.count += 1;
-  if (record.count >= MAX_LOGIN_ATTEMPTS) {
-    record.blockedUntil = now + BLOCK_DURATION_MS;
-    record.count = 0;
-    void sendTelegramSecurityAlert(
-      key,
-      "Trop de tentatives. Réessayez dans 15 minute(s).",
-    ).catch((error) => console.error("[telegram] security notification failed:", error.message));
-  }
-  loginAttempts.set(key, record);
-}
-
-function clearFailedAttempts(req: Request) {
-  loginAttempts.delete(getClientKey(req));
 }
 
 function getBlockedIps(value: string | undefined): string[] {
@@ -767,11 +1026,21 @@ function validatePhone(value: unknown, fieldName: string): string {
   return result.data;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.session.userId) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const userId = req.session.userId;
+  if (!Number.isSafeInteger(userId) || !userId) {
     return res.status(401).json({ message: "Non authentifié" });
   }
-  next();
+  try {
+    if (!await isSessionAccountAllowed(userId)) {
+      destroySession(req, res);
+      return res.status(401).json({ message: "Non authentifié" });
+    }
+    return next();
+  } catch (error) {
+    console.error("[security] session validation failed:", error instanceof Error ? error.message : "unknown");
+    return res.status(503).json({ message: "Le service d’authentification est temporairement indisponible." });
+  }
 }
 
 async function requireAdmin(req: Request, res: Response, next: NextFunction) {
@@ -779,10 +1048,14 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ message: "Non authentifié" });
   }
   const user = await storage.getUser(req.session.userId);
-  if (!user?.isAdmin) {
+  if (!user || user.isBanned) {
+    destroySession(req, res);
+    return res.status(401).json({ message: "Non authentifié" });
+  }
+  if (!user.isAdmin) {
     return res.status(403).json({ message: "Accès refusé" });
   }
-  next();
+  return next();
 }
 
 async function requireBanker(req: Request, res: Response, next: NextFunction) {
@@ -790,10 +1063,14 @@ async function requireBanker(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ message: "Non authentifié" });
   }
   const user = await storage.getUser(req.session.userId);
-  if (!user?.isAdmin && !user?.isBanker) {
+  if (!user || user.isBanned) {
+    destroySession(req, res);
+    return res.status(401).json({ message: "Non authentifié" });
+  }
+  if (!user.isAdmin && !user.isBanker) {
     return res.status(403).json({ message: "Accès refusé" });
   }
-  next();
+  return next();
 }
 
 export async function registerRoutes(
@@ -897,8 +1174,28 @@ export async function registerRoutes(
     }
   });
 
+  app.use("/api", (req, res, next) => {
+    const path = apiRequestPath(req);
+    const isWebhook = path.startsWith("/api/webhooks/");
+
+    const isUnsafeMethod = ["POST", "PUT", "PATCH", "DELETE"].includes(req.method.toUpperCase());
+    const changesStateOnGet =
+      req.method.toUpperCase() === "GET" &&
+      /^\/api\/deposits\/\d+\/(?:verify|drimpay-status|ashtechpay-status|sendavapay-status)$/.test(path);
+    if (
+      !isWebhook &&
+      (isUnsafeMethod || changesStateOnGet) &&
+      !isTrustedBrowserOrigin(req)
+    ) {
+      return res.status(403).json({ message: "Origine de la requête refusée." });
+    }
+
+    return next();
+  });
+
   // Auth routes
   app.post("/api/auth/captcha/start", (req, res) => {
+    if (consumeEndpointLimit(req, res, "captcha-start", 10, 60_000)) return;
     const requestedScope: unknown = req.body?.scope;
     if (requestedScope !== "register" && requestedScope !== "transaction_password") {
       return res.status(400).json({ message: "Type de vérification invalide" });
@@ -925,6 +1222,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/auth/captcha", (req, res) => {
+    if (consumeEndpointLimit(req, res, "captcha-generate", 10, 60_000)) return;
     const requestedScope: unknown = req.body?.scope;
     if (requestedScope !== "register" && requestedScope !== "transaction_password") {
       return res.status(400).json({ message: "Type de vérification invalide" });
@@ -957,6 +1255,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/auth/register", async (req, res) => {
+    if (consumeEndpointLimit(req, res, "register", AUTH_REGISTER_IP_LIMIT, AUTH_ENDPOINT_WINDOW_MS)) return;
     try {
       const requestBody = req.body && typeof req.body === "object"
         ? req.body as Record<string, unknown>
@@ -1022,13 +1321,13 @@ export async function registerRoutes(
         referredBy,
       });
 
-      req.session.userId = user.id;
-      res.json({ user: { ...user, password: undefined } });
+      await establishAuthenticatedSession(req, user.id);
+      res.json({ user: toClientUser(user) });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors[0].message });
+        return res.status(400).json({ message: error.issues[0].message });
       }
-      res.status(500).json({ message: error.message || "Erreur serveur" });
+      res.status(500).json({ message: "Erreur interne du serveur." });
     }
   });
 
@@ -1078,9 +1377,10 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Identifiants incorrects" });
       }
 
+      if (checkBruteForce(req, res, user.id)) return;
       const validPassword = await verifyPassword(data.password, user.password);
       if (!validPassword) {
-        recordFailedAttempt(req);
+        recordFailedAttempt(req, user.id);
         return res.status(400).json({ message: "Identifiants incorrects" });
       }
 
@@ -1088,8 +1388,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Compte suspendu" });
       }
 
-      clearFailedAttempts(req);
-      req.session.userId = user.id;
+      clearFailedAttempts(req, user.id);
+      await establishAuthenticatedSession(req, user.id);
       if (user.isAdmin) {
         void sendTelegramMessage(
           [
@@ -1100,12 +1400,13 @@ export async function registerRoutes(
           ].join("\n"),
         ).catch((error) => console.error("[telegram] admin login notification failed:", error.message));
       }
-      res.json({ user: { ...user, password: undefined } });
+      res.json({ user: toClientUser(user) });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors[0].message });
+        recordFailedAttempt(req);
+        return res.status(400).json({ message: error.issues[0].message });
       }
-      res.status(500).json({ message: error.message || "Erreur serveur" });
+      res.status(500).json({ message: "Erreur interne du serveur." });
     }
   });
 
@@ -1114,10 +1415,11 @@ export async function registerRoutes(
       return res.status(401).json({ message: "Non authentifié" });
     }
     const user = await storage.getUser(req.session.userId);
-    if (!user) {
+    if (!user || user.isBanned) {
+      destroySession(req, res);
       return res.status(401).json({ message: "Non authentifié" });
     }
-    res.json({ user: { ...user, password: undefined } });
+    res.json({ user: toClientUser(user) });
   });
 
   app.get("/api/auth/transaction-password/status", requireAuth, async (req, res) => {
@@ -1164,7 +1466,7 @@ export async function registerRoutes(
       if (!saved) return res.status(409).json({ message: "Un mot de passe de retrait est déjà défini." });
       return res.json({ success: true });
     } catch (error: any) {
-      return res.status(500).json({ message: error.message || "Impossible d’enregistrer le mot de passe." });
+      return res.status(500).json({ message: "Impossible d’enregistrer le mot de passe." });
     }
   });
 
@@ -1185,7 +1487,7 @@ export async function registerRoutes(
       const user = await storage.updateUser(req.session.userId!, {
         fullName: parsed.data.fullName,
       });
-      return res.json({ user: { ...user, password: undefined } });
+      return res.json({ user: toClientUser(user) });
     } catch {
       return res.status(500).json({ message: "Impossible de mettre à jour le profil" });
     }
@@ -1193,11 +1495,18 @@ export async function registerRoutes(
 
   app.post("/api/auth/logout", (req, res) => {
     req.session.destroy(() => {
+      res.clearCookie("connect.sid", {
+        path: "/",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      });
       res.json({ success: true });
     });
   });
 
   app.post("/api/change-password", requireAuth, async (req, res) => {
+    if (consumeUserLimit(req, res, "change-password", 5, AUTH_ENDPOINT_WINDOW_MS)) return;
     try {
       const { currentPassword, newPassword } = req.body ?? {};
       
@@ -1225,7 +1534,7 @@ export async function registerRoutes(
 
       res.json({ success: true, message: "Mot de passe modifie avec succes" });
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Erreur serveur" });
+      res.status(500).json({ message: "Erreur interne du serveur." });
     }
   });
 
@@ -1283,6 +1592,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/products/:id/purchase", requireAuth, async (req, res) => {
+    if (consumeUserLimit(req, res, "product-purchase", 15, AUTH_ENDPOINT_WINDOW_MS)) return;
     try {
       const productId = parseInt(getRouteParam(req.params.id));
       const product = await storage.getProduct(productId);
@@ -1723,6 +2033,7 @@ export async function registerRoutes(
 
   // Deposits
   app.post("/api/deposits", requireAuth, async (req, res) => {
+    if (consumeUserLimit(req, res, "deposit-create", 10, AUTH_ENDPOINT_WINDOW_MS)) return;
     try {
       const { amount, accountName, accountNumber, paymentMethod, country, paymentChannelId, useSoleaspay, useWestpay, usePpaypros, useInpay, inpayPhone, otpCode,
         paymentNumberId, channelName, screenshot, paymentMessage, reference, paymentSource } = req.body;
@@ -1757,7 +2068,7 @@ export async function registerRoutes(
          paymentChannelId: paymentChannelId === undefined ? undefined : Number(paymentChannelId),
        });
        if (!parsedDeposit.success) {
-         return res.status(400).json({ message: parsedDeposit.error.errors[0]?.message || "Données invalides" });
+         return res.status(400).json({ message: parsedDeposit.error.issues[0]?.message || "Données invalides" });
        }
         if (reference !== undefined && reference !== null && typeof reference !== "string") {
           return res.status(400).json({ message: "Référence de paiement invalide" });
@@ -1886,7 +2197,7 @@ export async function registerRoutes(
           if (!process.env.WESTPAY_MERCHANT_SLUG) {
             return res.status(400).json({ message: "WestPay non configuré : la variable WESTPAY_MERCHANT_SLUG doit être définie sur le serveur", westpay: true });
           }
-          const baseUrl = `${req.protocol}://${req.get("host")}`;
+          const baseUrl = getPublicBaseUrl(req);
           // Create deposit to get an ID, then build the redirect URL
           const deposit = await storage.createDeposit({
             userId: req.session.userId!,
@@ -1898,7 +2209,8 @@ export async function registerRoutes(
             paymentChannelId: normalizedDeposit.paymentChannelId && normalizedDeposit.paymentChannelId > 0 ? normalizedDeposit.paymentChannelId : null,
              status: "pending",
           });
-          const callbackUrl = `${baseUrl}/api/westpay/callback?depositId=${deposit.id}`;
+          const returnState = createWestPayReturnState(deposit.id);
+          const callbackUrl = `${baseUrl}/api/westpay/callback?state=${encodeURIComponent(returnState)}`;
           const westpayUrl = westpayBuildUrl({
             amount: normalizedDeposit.amount,
             countryCode: normalizedDeposit.country,
@@ -2671,6 +2983,7 @@ export async function registerRoutes(
 
   // Create payment (server-side, stores deposit record)
   app.post("/api/sendavapay/create", requireAuth, async (req, res) => {
+    if (consumeUserLimit(req, res, "sendavapay-create", 10, AUTH_ENDPOINT_WINDOW_MS)) return;
     try {
       const { amount, country, operatorId, operatorName, payerPhone } = req.body;
       const user = await storage.getUser(req.session.userId!);
@@ -2745,31 +3058,45 @@ export async function registerRoutes(
 
   // Initiate payment (proxy, calls CORS endpoint on behalf of authenticated user)
   app.post("/api/sendavapay/initiate", requireAuth, async (req, res) => {
+    if (consumeUserLimit(req, res, "sendavapay-initiate", 10, 10 * 60 * 1000)) return;
     try {
-      const { paymentToken, payerCountry, operatorId, depositId, payerPhone } = req.body;
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(401).json({ message: "Non authentifié" });
-      if (!payerPhone || !payerPhone.trim()) {
-        return res.status(400).json({ message: "Le numéro Mobile Money est requis" });
+      const depositId = Number(req.body?.depositId);
+      const operatorId = typeof req.body?.operatorId === "string"
+        ? req.body.operatorId.trim()
+        : "";
+      if (!Number.isSafeInteger(depositId) || depositId <= 0) {
+        return res.status(400).json({ message: "Dépôt invalide." });
+      }
+      if (!operatorId || operatorId.length > 64) {
+        return res.status(400).json({ message: "Opérateur invalide." });
+      }
+      const deposit = await storage.getDeposit(depositId);
+      if (!deposit || deposit.userId !== user.id || !deposit.sendavapayToken) {
+        return res.status(404).json({ message: "Dépôt SendavaPay introuvable." });
+      }
+      if (deposit.status === "approved" || deposit.status === "rejected") {
+        return res.status(409).json({ message: "Ce dépôt est déjà terminé." });
       }
 
-      const svCountry = toSendavapayCountry(payerCountry);
-      const customerPhone = sendavapayFormatPhone(payerPhone.trim(), payerCountry);
+      const svCountry = toSendavapayCountry(deposit.country);
+      const customerPhone = sendavapayFormatPhone(deposit.accountNumber, deposit.country);
 
       const result = await sendavapayInitiate({
-        paymentToken,
+        paymentToken: deposit.sendavapayToken,
         payerName: user.fullName,
         payerPhone: customerPhone,
         payerCountry: svCountry,
         operatorId,
       });
 
-      // Update deposit status to processing
-      if (depositId) {
-        await storage.updateDeposit(depositId, { status: "processing" });
-      }
+      await storage.updateDeposit(deposit.id, { status: "processing" });
+      const response = typeof result.otpToken === "string" && result.otpToken
+        ? { ...result, otpToken: signSendavaOtpTicket(result.otpToken, user.id, deposit.id) }
+        : result;
 
-      res.json(result);
+      res.json(response);
     } catch (error: any) {
       console.error("[sendavapay] initiate error:", error);
       res.status(500).json({ message: error.message || "Erreur serveur" });
@@ -2778,12 +3105,27 @@ export async function registerRoutes(
 
   // Submit OTP — CLIENT (CORS) endpoint, no SDK key
   app.post("/api/sendavapay/submit-otp", requireAuth, async (req, res) => {
+    if (consumeUserLimit(req, res, "sendavapay-otp", 10, 10 * 60 * 1000)) return;
     try {
-      const { otpToken, otp } = req.body;
-      if (!otpToken || !otp) {
+      const ticket = verifySendavaOtpTicket(req.body?.otpToken);
+      const otp = typeof req.body?.otp === "string" ? req.body.otp.trim() : "";
+      if (!ticket || ticket.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Autorisation de paiement invalide ou expirée." });
+      }
+      if (!/^\d{4,12}$/.test(otp)) {
         return res.status(400).json({ message: "otpToken et otp requis" });
       }
-      const result = await sendavapaySubmitOtp({ otpToken, otp });
+      const deposit = await storage.getDeposit(ticket.depositId);
+      if (
+        !deposit ||
+        deposit.userId !== req.session.userId ||
+        !deposit.sendavapayToken ||
+        deposit.status === "approved" ||
+        deposit.status === "rejected"
+      ) {
+        return res.status(404).json({ message: "Dépôt SendavaPay introuvable ou terminé." });
+      }
+      const result = await sendavapaySubmitOtp({ otpToken: ticket.otpToken, otp });
       res.json(result);
     } catch (error: any) {
       console.error("[sendavapay] submit-otp error:", error);
@@ -2793,16 +3135,23 @@ export async function registerRoutes(
 
   // Retry a failed payment — CLIENT (CORS) endpoint, no SDK key
   app.post("/api/sendavapay/retry", requireAuth, async (req, res) => {
+    if (consumeUserLimit(req, res, "sendavapay-retry", 5, AUTH_ENDPOINT_WINDOW_MS)) return;
     try {
-      const { paymentToken, depositId } = req.body;
-      if (!paymentToken) {
-        return res.status(400).json({ message: "paymentToken requis" });
+      const depositId = Number(req.body?.depositId);
+      if (!Number.isSafeInteger(depositId) || depositId <= 0) {
+        return res.status(400).json({ message: "Dépôt invalide." });
       }
-      // Reset deposit status to processing
-      if (depositId) {
-        await storage.updateDeposit(depositId, { status: "processing" });
+      const deposit = await storage.getDeposit(depositId);
+      if (!deposit || deposit.userId !== req.session.userId || !deposit.sendavapayToken) {
+        return res.status(404).json({ message: "Dépôt SendavaPay introuvable." });
       }
-      const result = await sendavapayRetry(paymentToken);
+      if (deposit.status === "approved" || deposit.status === "rejected") {
+        return res.status(409).json({ message: "Ce dépôt ne peut plus être relancé." });
+      }
+      const result = await sendavapayRetry(deposit.sendavapayToken);
+      if (result.success) {
+        await storage.updateDeposit(deposit.id, { status: "processing" });
+      }
       res.json(result);
     } catch (error: any) {
       console.error("[sendavapay] retry error:", error);
@@ -3008,7 +3357,7 @@ export async function registerRoutes(
         const sig = req.headers["x-sendavapay-signature"] as string || "";
         // req.rawBody is captured by the global express.json verify callback
         const rawBuf = (req as any).rawBody as Buffer | undefined;
-        if (secret && rawBuf && !sendavapayVerifySignature(rawBuf, sig, secret)) {
+        if (!rawBuf || !sendavapayVerifySignature(rawBuf, sig, secret)) {
           console.warn("[sendavapay webhook] Invalid signature");
           return res.status(401).json({ message: "Invalid signature" });
         }
@@ -3047,21 +3396,33 @@ export async function registerRoutes(
   // ── WestPay: payment callback (redirect after user pays on WestPay page) ────
   app.get("/api/westpay/callback", async (req, res) => {
     try {
-      const { depositId, status, ref } = req.query as Record<string, string>;
-      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const baseUrl = getPublicBaseUrl(req);
+      const depositId = readWestPayReturnState(req.query.state);
       if (!depositId) return res.redirect(`${baseUrl}/deposit?wp_status=error`);
-      const deposit = await storage.getDeposit(parseInt(depositId));
-      if (!deposit) return res.redirect(`${baseUrl}/deposit?wp_status=error`);
-      // Persist the WestPay transaction reference; webhook will approve
-      if (ref && (deposit.status === "pending" || deposit.status === "processing")) {
+      const deposit = await storage.getDeposit(depositId);
+      if (!deposit || deposit.paymentMethod !== "WestPay") {
+        return res.redirect(`${baseUrl}/deposit?wp_status=error`);
+      }
+      const ref = typeof req.query.ref === "string" ? req.query.ref.trim() : "";
+      if (
+        ref.length > 0 &&
+        ref.length <= 200 &&
+        !deposit.westpayReference &&
+        (deposit.status === "pending" || deposit.status === "processing")
+      ) {
+        // The signed state binds this redirect to the deposit created for it.
+        // Only the signed webhook can approve the deposit.
         await storage.updateDeposit(deposit.id, { westpayReference: ref });
       }
-      const wpStatus = status === "success" ? "success" : "pending";
-      res.redirect(`${baseUrl}/deposit?wp_status=${wpStatus}&wp_depositId=${depositId}`);
+      const wpStatus = req.query.status === "success" ? "success" : "pending";
+      res.redirect(`${baseUrl}/deposit?wp_status=${wpStatus}&wp_depositId=${deposit.id}`);
     } catch (err: any) {
-      console.error("[westpay callback] error:", err);
-      const baseUrl = `${req.protocol}://${req.get("host")}`;
-      res.redirect(`${baseUrl}/deposit?wp_status=error`);
+      console.error("[westpay callback] error:", err instanceof Error ? err.name : "Error");
+      const fallbackBaseUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
+      if (fallbackBaseUrl) {
+        return res.redirect(`${fallbackBaseUrl}/deposit?wp_status=error`);
+      }
+      return res.status(400).send("Callback invalide.");
     }
   });
 
@@ -3079,7 +3440,7 @@ export async function registerRoutes(
         const sig = (req.headers["x-robotpay-signature"] as string) || "";
         // req.rawBody is captured by the global express.json verify callback
         const rawBuf = (req as any).rawBody as Buffer | undefined;
-        if (secret && rawBuf && !westpayVerifySignature(rawBuf, sig, secret)) {
+        if (!rawBuf || !westpayVerifySignature(rawBuf, sig, secret)) {
           console.warn("[westpay webhook] Signature invalide");
           return res.status(401).json({ message: "Signature invalide" });
         }
@@ -3257,6 +3618,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/withdrawals", requireAuth, async (req, res) => {
+    if (consumeUserLimit(req, res, "withdrawal-create", 5, AUTH_ENDPOINT_WINDOW_MS)) return;
     try {
       const transactionPassword = typeof req.body?.transactionPassword === "string"
         ? req.body.transactionPassword
@@ -3323,7 +3685,7 @@ export async function registerRoutes(
     try {
       const parsedWallet = walletSchema.safeParse(req.body);
       if (!parsedWallet.success) {
-        return res.status(400).json({ message: parsedWallet.error.errors[0]?.message || "Données invalides" });
+        return res.status(400).json({ message: parsedWallet.error.issues[0]?.message || "Données invalides" });
       }
       const wallet = await storage.createWallet({
         userId: req.session.userId!,
@@ -3337,7 +3699,12 @@ export async function registerRoutes(
 
   app.delete("/api/wallets/:id", requireAuth, async (req, res) => {
     try {
-      await storage.deleteWallet(parseInt(getRouteParam(req.params.id)));
+      const walletId = Number.parseInt(getRouteParam(req.params.id), 10);
+      if (!Number.isSafeInteger(walletId) || walletId <= 0) {
+        return res.status(400).json({ message: "Compte de retrait invalide." });
+      }
+      const deleted = await storage.deleteWallet(req.session.userId!, walletId);
+      if (!deleted) return res.status(404).json({ message: "Compte de retrait introuvable." });
       res.json({ success: true });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -3963,8 +4330,9 @@ export async function registerRoutes(
   });
 
   app.post("/api/admin/verify-pin", requireAuth, async (req, res) => {
+    if (consumeUserLimit(req, res, "admin-pin", 5, LOGIN_WINDOW_MS)) return;
     try {
-      const { pin } = req.body;
+      const pin = typeof req.body?.pin === "string" ? req.body.pin : "";
       const user = await storage.getUser(req.session.userId!);
       
       if (!user?.isAdmin) {
@@ -3979,11 +4347,23 @@ export async function registerRoutes(
       if (!user.adminPin) {
         return res.status(400).json({ message: "Code PIN non configure" });
       }
-      
-      if (user.adminPin !== pin) {
+      if (pin.trim().length < 4 || pin.trim().length > 8) {
+        return res.status(400).json({ message: "Code PIN invalide." });
+      }
+
+      const isHashedPin = /^\$2[aby]\$/.test(user.adminPin);
+      const pinIsValid = isHashedPin
+        ? await verifyPassword(pin, user.adminPin)
+        : timingSafeEqual(
+            createHmac("sha256", sessionSecret as string).update(pin).digest(),
+            createHmac("sha256", sessionSecret as string).update(user.adminPin).digest(),
+          );
+      if (!pinIsValid) {
         return res.status(401).json({ message: "Code PIN incorrect" });
       }
-      
+      if (!isHashedPin) {
+        await storage.updateUser(user.id, { adminPin: await hashPassword(pin) });
+      }
       res.json({ success: true });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4340,15 +4720,15 @@ export async function registerRoutes(
 
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {
-      const search = (req.query.search as string) || "";
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 50;
+      const search = typeof req.query.search === "string" ? req.query.search.trim().slice(0, 100) : "";
+      const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
+      const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit || "50"), 10) || 50));
       const offset = (page - 1) * limit;
       
       const { users: allUsers, total } = await storage.getAllUsers(search, limit, offset);
       const usersWithTeam = await Promise.all(allUsers.map(async (user) => {
         const teamStats = await storage.getTeamStatsSimple(user.id);
-        return { ...user, password: undefined, ...teamStats, referrerName: null };
+        return { ...toClientUser(user), ...teamStats, referrerName: null };
       }));
       res.json({ users: usersWithTeam, total, page, limit, totalPages: Math.ceil(total / limit) });
     } catch (error: any) {
@@ -4385,7 +4765,7 @@ export async function registerRoutes(
       const parsedWallet = walletSchema.safeParse(req.body);
       if (!parsedWallet.success) {
         return res.status(400).json({
-          message: parsedWallet.error.errors[0]?.message || "Données du compte invalides",
+          message: parsedWallet.error.issues[0]?.message || "Données du compte invalides",
         });
       }
 
@@ -4543,11 +4923,15 @@ export async function registerRoutes(
           }
           const user5 = await storage.getUser(userId);
           const newAdminStatus = !user5?.isAdmin;
+          const requestedPin = typeof value === "string" ? value.trim() : "";
+          if (newAdminStatus && (requestedPin.length < 4 || requestedPin.length > 8)) {
+            return res.status(400).json({ message: "Le code PIN doit contenir 4 à 8 caractères." });
+          }
           await storage.updateUser(userId, { 
             isAdmin: newAdminStatus,
             adminSetBy: req.session.userId,
             adminSetAt: new Date(),
-            adminPin: newAdminStatus && value ? value : null,
+            adminPin: newAdminStatus && requestedPin ? await hashPassword(requestedPin) : null,
           });
           await storage.logAdminAction(req.session.userId!, "toggle_admin", userId, `Admin: ${newAdminStatus}`);
           break;
@@ -4555,7 +4939,10 @@ export async function registerRoutes(
           if (!adminUser?.isSuperAdmin) {
             return res.status(403).json({ message: "Action réservée au super admin" });
           }
-          await storage.updateUser(userId, { adminPin: value });
+          if (typeof value !== "string" || value.trim().length < 4 || value.trim().length > 8) {
+            return res.status(400).json({ message: "Le code PIN doit contenir 4 à 8 caractères." });
+          }
+          await storage.updateUser(userId, { adminPin: await hashPassword(value.trim()) });
           await storage.logAdminAction(req.session.userId!, "update_admin_pin", userId, `PIN admin mis à jour`);
           break;
         case "toggle-password-required":
@@ -5130,7 +5517,7 @@ export async function registerRoutes(
     try {
       const parseResult = createGiftCodeSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ message: parseResult.error.errors[0]?.message || "Donnees invalides" });
+        return res.status(400).json({ message: parseResult.error.issues[0]?.message || "Donnees invalides" });
       }
 
       const { code, amount, maxUses, expiresAt } = parseResult.data;
@@ -5174,7 +5561,7 @@ export async function registerRoutes(
     try {
       const parseResult = claimGiftCodeSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ message: parseResult.error.errors[0]?.message || "Le code est requis" });
+        return res.status(400).json({ message: parseResult.error.issues[0]?.message || "Le code est requis" });
       }
 
       const code = parseResult.data.code.trim().toUpperCase();

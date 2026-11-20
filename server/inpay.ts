@@ -139,6 +139,7 @@ export function createInpaySignature(
   params: Record<string, unknown>,
   apiKey: string,
 ): string {
+  // InPay's documented API requires this MD5 signature format; it is not used for password storage.
   return crypto
     .createHash("md5")
     .update(`${signatureInput(params)}&key=${apiKey}`)

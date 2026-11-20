@@ -762,7 +762,7 @@ export default function AdminUsers({ isSuperAdmin }: AdminUsersProps) {
                         if (!parsed.success) {
                           toast({
                             title: "Informations invalides",
-                            description: parsed.error.errors[0]?.message || "Vérifiez les informations du compte.",
+                            description: parsed.error.issues[0]?.message || "Vérifiez les informations du compte.",
                             variant: "destructive",
                           });
                           return;

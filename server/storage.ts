@@ -236,7 +236,7 @@ export interface IStorage {
   // Wallets
   getWallets(userId: number): Promise<WithdrawalWallet[]>;
   createWallet(data: Partial<WithdrawalWallet>): Promise<WithdrawalWallet>;
-  deleteWallet(id: number): Promise<void>;
+  deleteWallet(userId: number, id: number): Promise<boolean>;
   setDefaultWallet(userId: number, walletId: number): Promise<void>;
   getDefaultWallet(userId: number): Promise<WithdrawalWallet | undefined>;
   
@@ -1885,13 +1885,28 @@ export class DatabaseStorage implements IStorage {
     return wallet;
   }
 
-  async deleteWallet(id: number): Promise<void> {
-    await db.delete(withdrawalWallets).where(eq(withdrawalWallets.id, id));
+  async deleteWallet(userId: number, id: number): Promise<boolean> {
+    const deleted = await db.delete(withdrawalWallets)
+      .where(and(eq(withdrawalWallets.id, id), eq(withdrawalWallets.userId, userId)))
+      .returning({ id: withdrawalWallets.id });
+    return deleted.length > 0;
   }
 
   async setDefaultWallet(userId: number, walletId: number): Promise<void> {
-    await db.update(withdrawalWallets).set({ isDefault: false }).where(eq(withdrawalWallets.userId, userId));
-    await db.update(withdrawalWallets).set({ isDefault: true }).where(eq(withdrawalWallets.id, walletId));
+    await db.transaction(async (tx) => {
+      const [wallet] = await tx.select({ id: withdrawalWallets.id })
+        .from(withdrawalWallets)
+        .where(and(eq(withdrawalWallets.id, walletId), eq(withdrawalWallets.userId, userId)))
+        .limit(1);
+      if (!wallet) throw new Error("Compte de retrait introuvable.");
+
+      await tx.update(withdrawalWallets)
+        .set({ isDefault: false })
+        .where(eq(withdrawalWallets.userId, userId));
+      await tx.update(withdrawalWallets)
+        .set({ isDefault: true })
+        .where(and(eq(withdrawalWallets.id, walletId), eq(withdrawalWallets.userId, userId)));
+    });
   }
 
   async getDefaultWallet(userId: number): Promise<WithdrawalWallet | undefined> {

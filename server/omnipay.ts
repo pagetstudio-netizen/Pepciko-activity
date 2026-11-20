@@ -19,7 +19,7 @@ function formatMsisdn(phone: string, country: string): string {
   // Step 1: remove all non-digit characters (+, spaces, dashes, etc.)
   let digits = phone.replace(/\D/g, "");
 
-  // Step 2: remove the international double-zero prefix only (e.g. 0022899935673 → 22899935673)
+  // Step 2: remove only the international double-zero prefix.
   // We do NOT strip a single leading zero — in many West-African countries (e.g. Benin)
   // the local 0 is part of the subscriber number and must be kept.
   if (digits.startsWith("00")) {

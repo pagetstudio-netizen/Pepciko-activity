@@ -42,3 +42,5 @@
 - [Authentication viewport](authentication-viewport.md) — Keep login and registration fixed without page scrolling; use the supplied phone, lock, and account field icons.
 - [Signup code and withdrawal password](auth-captcha-transaction-password.md) — Display the generated verification code in the field; keep it separate from SMS and login passwords.
 - [VIP level rules](vip-level-policy.md) — Count approved deposits plus specified referral, invitation, check-in, and wheel credits; record Admin increases as approved deposits.
+- [Rate-limit scope](security-rate-limit-scope.md) — Login and sensitive actions limit both account and IP; in-process counters are per instance, so autoscale needs shared storage for global limits.
+- [Vite package firewall](vite-package-firewall.md) — Vite 7.3.7 is blocked by the Replit package firewall; Vite 8 conflicts with this app's current esbuild toolchain.

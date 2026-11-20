@@ -24,7 +24,7 @@ import {
   INVITATION_TASK_KEY_PREFIX,
 } from "./invitation-tasks";
 import bcrypt from "bcrypt";
-import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 
 export async function seed() {
   console.log("Seeding database...");
@@ -106,49 +106,63 @@ export async function seed() {
     )
   `);
 
-  // Check if admin already exists. Keep a development fallback for existing
-  // installations, while allowing deployments to configure the admin phone
-  // through the secret store.
-  const adminPhone = process.env.ADMIN_PHONE || "99935673";
-  const existingAdmin = await db.select().from(users).where(eq(users.phone, adminPhone));
+  // Do not embed administrator identifiers or credentials in source code.
+  // Provisioning and updates are opt-in through deployment Secrets.
+  const adminPhone = process.env.ADMIN_PHONE?.trim();
   const adminPassword = process.env.ADMIN_PASSWORD;
-
   const adminPin = process.env.ADMIN_PIN;
 
-  if (existingAdmin.length === 0) {
-    if (!adminPassword) {
-      console.warn("No administrator exists yet; set ADMIN_PASSWORD to provision the initial admin.");
-    } else {
-      const hashedPassword = await bcrypt.hash(adminPassword, 12);
-      await db.insert(users).values({
-        fullName: "Super Admin",
-        phone: adminPhone,
-        country: "TG",
-        password: hashedPassword,
-        referralCode: "ADMIN1",
-        balance: "0",
-        isAdmin: true,
-        isSuperAdmin: true,
-        adminPin: adminPin || null,
-      });
-      console.log("Super admin created");
-      if (adminPin) console.log("Super admin PIN configured");
-    }
+  if (!adminPhone) {
+    console.warn("Administrator provisioning skipped; configure ADMIN_PHONE in deployment Secrets to manage the bootstrap account.");
   } else {
-    // Always update admin flags; also update password and PIN if env vars are set
-    const updateData: any = { country: "TG", isAdmin: true, isSuperAdmin: true };
-    if (adminPassword) {
-      updateData.password = await bcrypt.hash(adminPassword, 12);
-      console.log("Super admin password updated");
+    const existingAdmin = await db.select().from(users).where(eq(users.phone, adminPhone));
+    if (existingAdmin.length === 0) {
+      if (!adminPassword) {
+        console.warn("No administrator exists yet; configure ADMIN_PHONE and ADMIN_PASSWORD in deployment Secrets.");
+      } else {
+        const hashedPassword = await bcrypt.hash(adminPassword, 12);
+        await db.insert(users).values({
+          fullName: "Super Admin",
+          phone: adminPhone,
+          country: "TG",
+          password: hashedPassword,
+          referralCode: "ADMIN1",
+          balance: "0",
+          isAdmin: true,
+          isSuperAdmin: true,
+          adminPin: adminPin ? await bcrypt.hash(adminPin, 12) : null,
+        });
+        console.log("Super admin created");
+        if (adminPin) console.log("Super admin PIN configured");
+      }
+    } else {
+      // Keep the existing administrator and update credentials only when
+      // deployment Secrets explicitly provide them.
+      const updateData: any = { country: "TG", isAdmin: true, isSuperAdmin: true };
+      if (adminPassword) {
+        updateData.password = await bcrypt.hash(adminPassword, 12);
+        console.log("Super admin password updated");
+      }
+      if (adminPin) {
+        updateData.adminPin = await bcrypt.hash(adminPin, 12);
+        console.log("Super admin PIN updated");
+      }
+      await db.update(users)
+        .set(updateData)
+        .where(eq(users.phone, adminPhone));
+      console.log("Super admin access verified");
     }
-    if (adminPin) {
-      updateData.adminPin = adminPin;
-      console.log("Super admin PIN updated");
-    }
+  }
+
+  // Migrate any legacy plaintext Admin PINs without changing the PIN users enter.
+  const usersWithPins = await db.select({ id: users.id, adminPin: users.adminPin })
+    .from(users)
+    .where(isNotNull(users.adminPin));
+  for (const user of usersWithPins) {
+    if (!user.adminPin || /^\$2[aby]\$/.test(user.adminPin)) continue;
     await db.update(users)
-      .set(updateData)
-      .where(eq(users.phone, adminPhone));
-    console.log("Super admin access verified");
+      .set({ adminPin: await bcrypt.hash(user.adminPin, 12) })
+      .where(eq(users.id, user.id));
   }
 
   // Seed countries only on first install — never overwrite admin changes

@@ -114,6 +114,7 @@ export function createPpayProsSignature(
   params: Record<string, unknown>,
   privateKey: string,
 ): string {
+  // PPayPros' documented API requires this MD5 signature format; it is not used for password storage.
   return crypto.createHash("md5").update(signedValueString(params, privateKey), "utf8").digest("hex").toUpperCase();
 }
 
