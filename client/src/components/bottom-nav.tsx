@@ -47,7 +47,7 @@ export default function BottomNav() {
             >
               {featured ? (
                 <span
-                  className="absolute left-1/2 top-[-30px] flex h-[64px] w-[64px] -translate-x-1/2 items-center justify-center rounded-full border-[5px] border-white shadow-sm"
+                  className="absolute left-1/2 top-[-22px] flex h-[64px] w-[64px] -translate-x-1/2 items-center justify-center rounded-full border-[5px] border-white shadow-sm"
                   style={{ backgroundColor: PEPSICO_RED }}
                 >
                   <img
