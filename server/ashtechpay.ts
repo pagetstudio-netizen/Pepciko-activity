@@ -40,6 +40,45 @@ export interface AshtechCollectResponse {
   flow?: string;
 }
 
+export function ashtechTransactionMatches(
+  transaction: AshtechCollectResponse,
+  expected: {
+    amount: number;
+    countryCode: string;
+    reference?: string | null;
+    transactionId?: string | null;
+    currency?: string;
+  },
+): boolean {
+  if (!Number.isFinite(Number(transaction.amount)) || Number(transaction.amount) !== Number(expected.amount)) {
+    return false;
+  }
+  if (
+    transaction.country_code &&
+    transaction.country_code.trim().toUpperCase() !== expected.countryCode.trim().toUpperCase()
+  ) {
+    return false;
+  }
+  if (transaction.reference && expected.reference && transaction.reference !== expected.reference) {
+    return false;
+  }
+  if (
+    transaction.transaction_id &&
+    expected.transactionId &&
+    transaction.transaction_id !== expected.transactionId
+  ) {
+    return false;
+  }
+  if (
+    expected.currency &&
+    transaction.currency &&
+    transaction.currency.trim().toUpperCase() !== expected.currency.trim().toUpperCase()
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export class AshtechApiError extends Error {
   status: number;
   data: Record<string, any>;

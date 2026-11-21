@@ -18,9 +18,6 @@ externalPort = 3001
 localPort = 23636
 externalPort = 3000
 
-[env]
-PORT = "5000"
-
 [deployment]
 deploymentTarget = "autoscale"
 run = ["node", "./dist/index.cjs"]
@@ -59,7 +56,3 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
-
-[userenv]
-
-[userenv.shared]

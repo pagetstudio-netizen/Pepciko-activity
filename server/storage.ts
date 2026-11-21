@@ -58,6 +58,36 @@ import {
 
 const DRIMPAY_STATUS_CHECK_SETTING_PREFIX = "__internal_drimpay_status_checks:";
 const DAILY_CHECKIN_TRANSACTION_TYPE = "daily_checkin";
+const DEPOSIT_PROVIDER_METADATA_FIELDS = [
+  "omnipayReference",
+  "omnipayId",
+  "drimpayOrderId",
+  "drimpayReference",
+  "westpayReference",
+  "inpayOutTradeNo",
+  "inpayOrderNumber",
+  "ashtechTransactionId",
+  "ashtechReference",
+  "sendavapayReference",
+  "sendavapayToken",
+] as const;
+const WITHDRAWAL_PROVIDER_METADATA_FIELDS = [
+  "inpayOrderNumber",
+  "drimpayReference",
+  "omnipayId",
+] as const;
+
+function pickProviderMetadata<T extends object>(
+  data: Partial<T>,
+  allowedFields: readonly string[],
+): Partial<T> {
+  const entries = Object.entries(data);
+  const invalidField = entries.find(([key]) => !allowedFields.includes(key));
+  if (invalidField) {
+    throw new Error("Seules les références fournisseur peuvent être modifiées ici.");
+  }
+  return Object.fromEntries(entries) as Partial<T>;
+}
 
 function maskBlogAuthorPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
@@ -154,7 +184,7 @@ export interface IStorage {
   clearTransactionPassword(userId: number): Promise<void>;
   createUser(data: Partial<User>): Promise<User>;
   updateUser(id: number, data: Partial<User>): Promise<User>;
-  adjustBalance(userId: number, wallet: "deposit" | "withdrawal", amount: number, executor?: any): Promise<boolean>;
+  claimFreeProductReward(userId: number, amount: number): Promise<boolean>;
   getDailyCheckinStatus(userId: number): Promise<DailyCheckinStatus | null>;
   claimDailyCheckinBonus(userId: number): Promise<DailyCheckinClaimOutcome>;
   getFortuneWheelStatus(
@@ -206,31 +236,39 @@ export interface IStorage {
   getPendingDrimPayDeposits(): Promise<Deposit[]>;
   incrementDrimPayStatusCheckCount(depositId: number): Promise<number>;
   clearDrimPayStatusCheckCount(depositId: number): Promise<void>;
-  claimDepositApproval(id: number): Promise<Deposit | undefined>;
-  claimDepositRejection(id: number): Promise<Deposit | undefined>;
-  claimAdminDepositApproval(id: number, processedBy: number): Promise<Deposit | undefined>;
   getDeposits(status?: string): Promise<(Deposit & { user: User })[]>;
   getUserApprovedDepositTotal(userId: number): Promise<number>;
   getUserVipQualifyingTotal(userId: number): Promise<number>;
   getUserDeposits(userId: number): Promise<Deposit[]>;
+  approveDepositAndCredit(id: number, processedBy?: number, description?: string): Promise<Deposit | undefined>;
+  rejectDeposit(id: number, processedBy?: number, clearScreenshot?: boolean): Promise<Deposit | undefined>;
+  setDepositNonterminalStatus(id: number, status: "pending" | "processing", data?: Partial<Deposit>): Promise<Deposit | undefined>;
   updateDeposit(id: number, data: Partial<Deposit>): Promise<Deposit>;
   cleanupDepositScreenshots(): Promise<void>;
-  processDepositReferralCommissions(userId: number, amount: number): Promise<void>;
   
   // Withdrawals
-  createWithdrawal(data: Partial<Withdrawal>): Promise<Withdrawal>;
   reserveWithdrawal(userId: number, amount: number, data: Partial<Withdrawal>): Promise<Withdrawal | undefined>;
   getWithdrawals(status?: string): Promise<(Withdrawal & { user: User })[]>;
   getUserWithdrawals(userId: number): Promise<Withdrawal[]>;
   getWithdrawal(id: number): Promise<Withdrawal | undefined>;
   getWithdrawalByInpayOutTradeNo(reference: string): Promise<Withdrawal | undefined>;
   getWithdrawalByDrimPayReference(reference: string): Promise<Withdrawal | undefined>;
+  claimInpayWithdrawal(id: number, outTradeNo: string): Promise<Withdrawal | undefined>;
+  releaseInpayWithdrawal(id: number, outTradeNo: string): Promise<Withdrawal | undefined>;
   claimDrimPayWithdrawal(id: number, externalRef: string): Promise<Withdrawal | undefined>;
   releaseDrimPayWithdrawal(id: number, externalRef: string): Promise<Withdrawal | undefined>;
   claimPpayProsWithdrawal(id: number, merchantOrderNo: string): Promise<Withdrawal | undefined>;
   releasePpayProsWithdrawal(id: number, merchantOrderNo: string): Promise<Withdrawal | undefined>;
+  finalizeWithdrawal(
+    id: number,
+    status: "approved" | "rejected",
+    processedBy?: number,
+    details?: Partial<Withdrawal>,
+    refundProvider?: string,
+    allowedStatuses?: Array<"pending" | "processing">,
+  ): Promise<Withdrawal | undefined>;
+  setWithdrawalProcessing(id: number, data?: Partial<Withdrawal>): Promise<Withdrawal | undefined>;
   updateWithdrawal(id: number, data: Partial<Withdrawal>): Promise<Withdrawal>;
-  claimWithdrawalFinalization(id: number, status: "approved" | "rejected"): Promise<Withdrawal | undefined>;
   getUserWithdrawalCountToday(userId: number): Promise<number>;
   
   // Wallets
@@ -270,7 +308,6 @@ export interface IStorage {
   claimTask(userId: number, taskId: number): Promise<void>;
   
   // Transactions
-  createTransaction(data: Partial<Transaction>): Promise<Transaction>;
   getUserTransactions(userId: number): Promise<Transaction[]>;
   
   // Settings
@@ -388,28 +425,35 @@ export class DatabaseStorage implements IStorage {
       signupBonus = resolveSignupBonus(settings.signupBonus);
     } catch {}
 
-    const [user] = await db.insert(users).values({
-      ...data,
-      password: hashedPassword,
-      referralCode,
-      balance: signupBonus.toString(),
-      depositBalance: signupBonus.toString(),
-      withdrawalBalance: "0",
-    } as any).returning();
+    return db.transaction(async (tx) => {
+      const [user] = await tx.insert(users).values({
+        fullName: data.fullName!,
+        phone: data.phone!,
+        country: data.country!,
+        password: hashedPassword,
+        referredBy: data.referredBy ?? null,
+        referralCode,
+        balance: signupBonus.toFixed(2),
+        depositBalance: signupBonus.toFixed(2),
+        withdrawalBalance: "0",
+      }).returning();
 
-    if (signupBonus > 0) {
-      await this.createTransaction({
-        userId: user.id,
-        type: "bonus",
-        amount: signupBonus.toString(),
-        description: "Bonus d'inscription",
-      });
-    }
-    
-    return user;
+      if (signupBonus > 0) {
+        await tx.insert(transactions).values({
+          userId: user.id,
+          type: "bonus",
+          amount: signupBonus.toFixed(2),
+          description: "Bonus d'inscription",
+        });
+      }
+      return user;
+    });
   }
 
   async updateUser(id: number, data: Partial<User>): Promise<User> {
+    if ("balance" in data || "depositBalance" in data || "withdrawalBalance" in data) {
+      throw new Error("Les soldes doivent être modifiés via les opérations financières contrôlées.");
+    }
     if (data.password) {
       data.password = await hashPassword(data.password);
     }
@@ -417,7 +461,7 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async adjustBalance(
+  private async adjustBalance(
     userId: number,
     wallet: "deposit" | "withdrawal",
     amount: number,
@@ -443,6 +487,38 @@ export class DatabaseStorage implements IStorage {
       balance: sql`${users.balance} + ${delta}`,
     }).where(conditions).returning({ id: users.id });
     return Boolean(updated);
+  }
+
+  async claimFreeProductReward(userId: number, amount: number): Promise<boolean> {
+    if (!Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) !== amount * 100) {
+      throw new Error("Montant de la récompense invalide.");
+    }
+    const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    return db.transaction(async (tx) => {
+      const [claimed] = await tx.update(users)
+        .set({ lastFreeProductClaim: now })
+        .where(and(
+          eq(users.id, userId),
+          or(isNull(users.lastFreeProductClaim), lt(users.lastFreeProductClaim, startOfDay)),
+        ))
+        .returning({ id: users.id });
+      if (!claimed) return false;
+
+      if (!await this.adjustBalance(userId, "deposit", amount, tx)) {
+        throw new Error("Impossible de créditer la récompense.");
+      }
+      await tx.insert(transactions).values({
+        userId,
+        type: "free_claim",
+        amount: amount.toFixed(2),
+        description: "Bonus produit gratuit",
+        createdAt: now,
+      });
+      return true;
+    });
   }
 
   async getDailyCheckinStatus(userId: number): Promise<DailyCheckinStatus | null> {
@@ -759,6 +835,8 @@ export class DatabaseStorage implements IStorage {
         deposit,
         withdrawal,
       );
+      const depositDelta = Number((deposit - Number(existing.depositBalance)).toFixed(2));
+      const withdrawalDelta = Number((withdrawal - Number(existing.withdrawalBalance)).toFixed(2));
 
       const [user] = await tx.update(users).set({
         depositBalance: deposit.toFixed(2),
@@ -790,6 +868,22 @@ export class DatabaseStorage implements IStorage {
           amount: netCredit.toFixed(2),
           description: "Crédit Admin enregistré comme dépôt approuvé",
           createdAt: now,
+        });
+      } else if (netCredit < 0 || depositDelta !== 0 || withdrawalDelta !== 0) {
+        await tx.insert(transactions).values({
+          userId,
+          type: "admin_balance_adjustment",
+          amount: netCredit.toFixed(2),
+          description: `Ajustement Admin — dépôt ${depositDelta.toFixed(2)} FCFA, retrait ${withdrawalDelta.toFixed(2)} FCFA`,
+        });
+      }
+
+      if (processedBy) {
+        await tx.insert(adminAuditLog).values({
+          adminId: processedBy,
+          action: "update_balances",
+          targetUserId: userId,
+          details: `Soldes modifiés — dépôt: ${deposit}F, retrait: ${withdrawal}F`,
         });
       }
 
@@ -1171,16 +1265,18 @@ export class DatabaseStorage implements IStorage {
           .where(eq(users.referralCode, user.referredBy));
       }
 
+      if (isFirstStableProductPurchase) {
+        await this.processReferralCommissionsWithExecutor(
+          tx,
+          userId,
+          product.price,
+          productId,
+          user.fullName,
+        );
+      }
+
       return { product, userProduct, isFirstStableProductPurchase };
     });
-
-    if (purchase.isFirstStableProductPurchase) {
-      try {
-        await this.processReferralCommissions(userId, purchase.product.price, productId);
-      } catch (error) {
-        console.error(`Referral commission processing failed after product purchase for user ${userId}:`, error);
-      }
-    }
 
     return purchase.userProduct;
   }
@@ -1199,77 +1295,61 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(userProducts.userId, userId), eq(userProducts.productId, productId)));
   }
 
-  async processReferralCommissions(userId: number, amount: number, productId: number): Promise<void> {
-    const user = await this.getUser(userId);
-    if (!user || !user.referredBy) return;
+  private async processReferralCommissionsWithExecutor(
+    executor: any,
+    userId: number,
+    amount: number,
+    productId: number,
+    buyerName: string,
+  ): Promise<void> {
+    const [buyer] = await executor.select({ referredBy: users.referredBy })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!buyer?.referredBy) return;
 
-    const settings = await this.getSettings();
-    const level1Rate = parseFloat(settings.level1Commission || "27") / 100;
-    const level2Rate = parseFloat(settings.level2Commission || "2") / 100;
-    const level3Rate = parseFloat(settings.level3Commission || "1") / 100;
+    const settingRows = await executor.select({
+      key: platformSettings.key,
+      value: platformSettings.value,
+    }).from(platformSettings);
+    const settings = Object.fromEntries(
+      settingRows.map((row: { key: string; value: string }) => [row.key, row.value]),
+    );
+    const rates = [
+      parseFloat(settings.level1Commission || "27") / 100,
+      parseFloat(settings.level2Commission || "2") / 100,
+      parseFloat(settings.level3Commission || "1") / 100,
+    ];
+    let referralCode: string | null = buyer.referredBy;
 
-    // Level 1
-    const level1User = await this.getUserByReferralCode(user.referredBy);
-    if (level1User) {
-      const commission = amount * level1Rate;
-      await this.adjustBalance(level1User.id, "withdrawal", commission);
-      await this.createReferralCommission({
-        userId: level1User.id,
-        fromUserId: userId,
-        level: 1,
-        amount: commission.toFixed(2),
-        productId,
-      });
-      await this.createTransaction({
-        userId: level1User.id,
-        type: "commission",
-        amount: commission.toFixed(2),
-        description: `Commission niveau 1 de ${user.fullName}`,
-      });
-
-      // Level 2
-      if (level1User.referredBy) {
-        const level2User = await this.getUserByReferralCode(level1User.referredBy);
-        if (level2User) {
-          const commission2 = amount * level2Rate;
-          await this.adjustBalance(level2User.id, "withdrawal", commission2);
-          await this.createReferralCommission({
-            userId: level2User.id,
-            fromUserId: userId,
-            level: 2,
-            amount: commission2.toFixed(2),
-            productId,
-          });
-          await this.createTransaction({
-            userId: level2User.id,
-            type: "commission",
-            amount: commission2.toFixed(2),
-            description: `Commission niveau 2`,
-          });
-
-          // Level 3
-          if (level2User.referredBy) {
-            const level3User = await this.getUserByReferralCode(level2User.referredBy);
-            if (level3User) {
-              const commission3 = amount * level3Rate;
-              await this.adjustBalance(level3User.id, "withdrawal", commission3);
-              await this.createReferralCommission({
-                userId: level3User.id,
-                fromUserId: userId,
-                level: 3,
-                amount: commission3.toFixed(2),
-                productId,
-              });
-              await this.createTransaction({
-                userId: level3User.id,
-                type: "commission",
-                amount: commission3.toFixed(2),
-                description: `Commission niveau 3`,
-              });
-            }
-          }
+    for (let level = 1; level <= rates.length && referralCode; level += 1) {
+      const [referrer] = await executor.select({
+        id: users.id,
+        referredBy: users.referredBy,
+      }).from(users).where(eq(users.referralCode, referralCode)).limit(1);
+      if (!referrer) break;
+      const commission = Math.round(amount * rates[level - 1] * 100) / 100;
+      if (commission > 0) {
+        if (!await this.adjustBalance(referrer.id, "withdrawal", commission, executor)) {
+          throw new Error("Impossible de créditer une commission de parrainage.");
         }
+        await executor.insert(referralCommissions).values({
+          userId: referrer.id,
+          fromUserId: userId,
+          level,
+          amount: commission.toFixed(2),
+          productId,
+        });
+        await executor.insert(transactions).values({
+          userId: referrer.id,
+          type: "commission",
+          amount: commission.toFixed(2),
+          description: level === 1
+            ? `Commission niveau 1 de ${buyerName}`
+            : `Commission niveau ${level}`,
+        });
       }
+      referralCode = referrer.referredBy;
     }
   }
 
@@ -1547,36 +1627,99 @@ export class DatabaseStorage implements IStorage {
     await db.delete(platformSettings).where(eq(platformSettings.key, key));
   }
 
-  async claimDepositApproval(id: number): Promise<Deposit | undefined> {
-    const [deposit] = await db.update(deposits)
-      .set({ status: "approved", processedAt: new Date() })
-      .where(and(
-        eq(deposits.id, id),
-        sql`${deposits.status} NOT IN ('approved', 'rejected')`,
-        isNull(deposits.processedAt),
-      ))
-      .returning();
-    return deposit;
+  async approveDepositAndCredit(
+    id: number,
+    processedBy?: number,
+    description?: string,
+  ): Promise<Deposit | undefined> {
+    return db.transaction(async (tx) => {
+      const now = new Date();
+      const [deposit] = await tx.update(deposits)
+        .set({ status: "approved", processedAt: now, processedBy: processedBy ?? null })
+        .where(and(
+          eq(deposits.id, id),
+          inArray(deposits.status, ["pending", "processing"]),
+          isNull(deposits.processedAt),
+        ))
+        .returning();
+      if (!deposit) return undefined;
+
+      const amount = Number(deposit.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Montant du dépôt invalide.");
+      }
+      if (!await this.adjustBalance(deposit.userId, "deposit", amount, tx)) {
+        throw new Error("Impossible de créditer le dépôt.");
+      }
+      const [creditedUser] = await tx.update(users)
+        .set({ hasDeposited: true })
+        .where(eq(users.id, deposit.userId))
+        .returning({ id: users.id });
+      if (!creditedUser) throw new Error("Utilisateur du dépôt introuvable.");
+
+      await tx.insert(transactions).values({
+        userId: deposit.userId,
+        type: "deposit",
+        amount: amount.toFixed(2),
+        description: description || `Dépôt #${deposit.id} approuvé`,
+        createdAt: now,
+      });
+      await this.processDepositReferralCommissionsWithExecutor(tx, deposit.userId, amount);
+      if (processedBy) {
+        await tx.insert(adminAuditLog).values({
+          adminId: processedBy,
+          action: "approve_deposit",
+          targetUserId: deposit.userId,
+          details: `Dépôt ${deposit.id} approuvé — ${amount} FCFA`,
+        });
+      }
+      return deposit;
+    });
   }
 
-  async claimDepositRejection(id: number): Promise<Deposit | undefined> {
-    const [deposit] = await db.update(deposits)
-      .set({ status: "rejected", processedAt: new Date() })
-      .where(and(
-        eq(deposits.id, id),
-        sql`${deposits.status} NOT IN ('approved', 'rejected')`,
-        isNull(deposits.processedAt),
-      ))
-      .returning();
-    return deposit;
+  async rejectDeposit(
+    id: number,
+    processedBy?: number,
+    clearScreenshot = false,
+  ): Promise<Deposit | undefined> {
+    return db.transaction(async (tx) => {
+      const [deposit] = await tx.update(deposits)
+        .set({
+          status: "rejected",
+          processedAt: new Date(),
+          processedBy: processedBy ?? null,
+          ...(clearScreenshot ? { screenshot: null } : {}),
+        })
+        .where(and(
+          eq(deposits.id, id),
+          inArray(deposits.status, ["pending", "processing"]),
+          isNull(deposits.processedAt),
+        ))
+        .returning();
+      if (deposit && processedBy) {
+        await tx.insert(adminAuditLog).values({
+          adminId: processedBy,
+          action: "reject_deposit",
+          targetUserId: deposit.userId,
+          details: `Dépôt ${deposit.id} rejeté — ${deposit.amount} FCFA`,
+        });
+      }
+      return deposit;
+    });
   }
 
-  async claimAdminDepositApproval(id: number, processedBy: number): Promise<Deposit | undefined> {
+  async setDepositNonterminalStatus(
+    id: number,
+    status: "pending" | "processing",
+    data: Partial<Deposit> = {},
+  ): Promise<Deposit | undefined> {
+    const safeData = pickProviderMetadata(data, DEPOSIT_PROVIDER_METADATA_FIELDS);
     const [deposit] = await db.update(deposits)
-      .set({ status: "approved", processedAt: new Date(), processedBy })
+      .set({ ...safeData, status })
       .where(and(
         eq(deposits.id, id),
-        sql`${deposits.status} <> 'approved'`,
+        inArray(deposits.status, ["pending", "processing"]),
+        isNull(deposits.processedAt),
       ))
       .returning();
     return deposit;
@@ -1626,7 +1769,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateDeposit(id: number, data: Partial<Deposit>): Promise<Deposit> {
-    const [deposit] = await db.update(deposits).set(data).where(eq(deposits.id, id)).returning();
+    const safeData = pickProviderMetadata(data, DEPOSIT_PROVIDER_METADATA_FIELDS);
+    const [deposit] = await db.update(deposits).set(safeData).where(eq(deposits.id, id)).returning();
+    if (!deposit) throw new Error("Dépôt introuvable.");
     return deposit;
   }
 
@@ -1645,68 +1790,58 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
-  async processDepositReferralCommissions(userId: number, amount: number): Promise<void> {
-    const user = await this.getUser(userId);
-    if (!user || !user.referredBy) return;
+  private async processDepositReferralCommissionsWithExecutor(
+    executor: any,
+    userId: number,
+    amount: number,
+  ): Promise<void> {
+    const [member] = await executor.select({ referredBy: users.referredBy })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!member?.referredBy) return;
 
-    const settings = await this.getSettings();
-    const level1Rate = parseFloat(settings.depositCommissionLevel1 || "5") / 100;
-    const level2Rate = parseFloat(settings.depositCommissionLevel2 || "2") / 100;
-    const level3Rate = parseFloat(settings.depositCommissionLevel3 || "1") / 100;
+    const settingRows = await executor.select({
+      key: platformSettings.key,
+      value: platformSettings.value,
+    }).from(platformSettings);
+    const settings = Object.fromEntries(
+      settingRows.map((row: { key: string; value: string }) => [row.key, row.value]),
+    );
+    const rates = [
+      parseFloat(settings.depositCommissionLevel1 || "5") / 100,
+      parseFloat(settings.depositCommissionLevel2 || "2") / 100,
+      parseFloat(settings.depositCommissionLevel3 || "1") / 100,
+    ];
+    const getReferrer = async (code: string) => {
+      const [referrer] = await executor.select({
+        id: users.id,
+        referredBy: users.referredBy,
+      }).from(users).where(eq(users.referralCode, code)).limit(1);
+      return referrer;
+    };
 
-    const level1User = await this.getUserByReferralCode(user.referredBy);
-    if (level1User) {
-      const commission = Math.round(amount * level1Rate);
+    let referralCode: string | null = member.referredBy;
+    for (let level = 1; level <= rates.length && referralCode; level += 1) {
+      const referrer = await getReferrer(referralCode);
+      if (!referrer) break;
+      const commission = Math.round(amount * rates[level - 1]);
       if (commission > 0) {
-        await this.adjustBalance(level1User.id, "withdrawal", commission);
-        await this.createTransaction({
-          userId: level1User.id,
+        if (!await this.adjustBalance(referrer.id, "withdrawal", commission, executor)) {
+          throw new Error("Impossible de créditer une commission de dépôt.");
+        }
+        await executor.insert(transactions).values({
+          userId: referrer.id,
           type: "deposit_commission",
-          amount: commission.toString(),
-          description: `Commission depot niveau 1`,
+          amount: commission.toFixed(2),
+          description: `Commission dépôt niveau ${level}`,
         });
       }
-
-      if (level1User.referredBy) {
-        const level2User = await this.getUserByReferralCode(level1User.referredBy);
-        if (level2User) {
-          const comm2 = Math.round(amount * level2Rate);
-          if (comm2 > 0) {
-            await this.adjustBalance(level2User.id, "withdrawal", comm2);
-            await this.createTransaction({
-              userId: level2User.id,
-              type: "deposit_commission",
-              amount: comm2.toString(),
-              description: `Commission depot niveau 2`,
-            });
-          }
-
-          if (level2User.referredBy) {
-            const level3User = await this.getUserByReferralCode(level2User.referredBy);
-            if (level3User) {
-              const comm3 = Math.round(amount * level3Rate);
-              if (comm3 > 0) {
-                await this.adjustBalance(level3User.id, "withdrawal", comm3);
-                await this.createTransaction({
-                  userId: level3User.id,
-                  type: "deposit_commission",
-                  amount: comm3.toString(),
-                  description: `Commission depot niveau 3`,
-                });
-              }
-            }
-          }
-        }
-      }
+      referralCode = referrer.referredBy;
     }
   }
 
   // Withdrawals
-  async createWithdrawal(data: Partial<Withdrawal>): Promise<Withdrawal> {
-    const [withdrawal] = await db.insert(withdrawals).values(data as any).returning();
-    return withdrawal;
-  }
-
   async reserveWithdrawal(
     userId: number,
     amount: number,
@@ -1750,6 +1885,30 @@ export class DatabaseStorage implements IStorage {
 
   async getWithdrawalByInpayOutTradeNo(reference: string): Promise<Withdrawal | undefined> {
     const [withdrawal] = await db.select().from(withdrawals).where(eq(withdrawals.inpayOutTradeNo, reference));
+    return withdrawal;
+  }
+
+  async claimInpayWithdrawal(id: number, outTradeNo: string): Promise<Withdrawal | undefined> {
+    const [withdrawal] = await db.update(withdrawals)
+      .set({ status: "processing", inpayOutTradeNo: outTradeNo })
+      .where(and(
+        eq(withdrawals.id, id),
+        eq(withdrawals.status, "pending"),
+        isNull(withdrawals.inpayOutTradeNo),
+      ))
+      .returning();
+    return withdrawal;
+  }
+
+  async releaseInpayWithdrawal(id: number, outTradeNo: string): Promise<Withdrawal | undefined> {
+    const [withdrawal] = await db.update(withdrawals)
+      .set({ status: "pending", inpayOutTradeNo: null, inpayOrderNumber: null })
+      .where(and(
+        eq(withdrawals.id, id),
+        eq(withdrawals.status, "processing"),
+        eq(withdrawals.inpayOutTradeNo, outTradeNo),
+      ))
+      .returning();
     return withdrawal;
   }
 
@@ -1809,22 +1968,80 @@ export class DatabaseStorage implements IStorage {
     return withdrawal;
   }
 
-  async updateWithdrawal(id: number, data: Partial<Withdrawal>): Promise<Withdrawal> {
-    const [withdrawal] = await db.update(withdrawals).set(data).where(eq(withdrawals.id, id)).returning();
+  async finalizeWithdrawal(
+    id: number,
+    status: "approved" | "rejected",
+    processedBy?: number,
+    details: Partial<Withdrawal> = {},
+    _refundProvider?: string,
+    allowedStatuses: Array<"pending" | "processing"> = ["pending", "processing"],
+  ): Promise<Withdrawal | undefined> {
+    const safeDetails = pickProviderMetadata(details, WITHDRAWAL_PROVIDER_METADATA_FIELDS);
+    return db.transaction(async (tx) => {
+      const now = new Date();
+      const [withdrawal] = await tx.update(withdrawals)
+        .set({
+          ...safeDetails,
+          status,
+          processedAt: now,
+          processedBy: processedBy ?? null,
+        })
+        .where(and(
+          eq(withdrawals.id, id),
+          inArray(withdrawals.status, allowedStatuses),
+          isNull(withdrawals.processedAt),
+        ))
+        .returning();
+      if (!withdrawal) return undefined;
+
+      if (status === "rejected") {
+        const amount = Number(withdrawal.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          throw new Error("Montant du retrait invalide.");
+        }
+        if (!await this.adjustBalance(withdrawal.userId, "withdrawal", amount, tx)) {
+          throw new Error("Impossible de rembourser le retrait.");
+        }
+        await tx.insert(transactions).values({
+          userId: withdrawal.userId,
+          type: "withdrawal_refund",
+          amount: amount.toFixed(2),
+          description: `Remboursement du retrait #${withdrawal.id}`,
+          createdAt: now,
+        });
+      }
+      if (processedBy) {
+        await tx.insert(adminAuditLog).values({
+          adminId: processedBy,
+          action: status === "approved" ? "approve_withdrawal" : "reject_withdrawal",
+          targetUserId: withdrawal.userId,
+          details: `Retrait ${withdrawal.id} ${status === "approved" ? "approuvé" : "rejeté"} — ${withdrawal.amount} FCFA`,
+        });
+      }
+      return withdrawal;
+    });
+  }
+
+  async setWithdrawalProcessing(
+    id: number,
+    data: Partial<Withdrawal> = {},
+  ): Promise<Withdrawal | undefined> {
+    const safeData = pickProviderMetadata(data, WITHDRAWAL_PROVIDER_METADATA_FIELDS);
+    const [withdrawal] = await db.update(withdrawals)
+      .set({ ...safeData, status: "processing" })
+      .where(and(
+        eq(withdrawals.id, id),
+        inArray(withdrawals.status, ["pending", "processing"]),
+        isNull(withdrawals.processedAt),
+      ))
+      .returning();
     return withdrawal;
   }
 
-  async claimWithdrawalFinalization(
-    id: number,
-    status: "approved" | "rejected",
-  ): Promise<Withdrawal | undefined> {
-    const [withdrawal] = await db.update(withdrawals)
-      .set({ status, processedAt: new Date() })
-      .where(and(
-        eq(withdrawals.id, id),
-        sql`${withdrawals.status} NOT IN ('approved', 'rejected')`,
-      ))
-      .returning();
+  async updateWithdrawal(id: number, data: Partial<Withdrawal>): Promise<Withdrawal> {
+    const safeData = pickProviderMetadata(data, WITHDRAWAL_PROVIDER_METADATA_FIELDS);
+    const [withdrawal] = await db.update(withdrawals).set(safeData).where(eq(withdrawals.id, id)).returning();
+    if (!withdrawal) throw new Error("Retrait introuvable.");
     return withdrawal;
   }
 
@@ -2563,11 +2780,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Transactions
-  async createTransaction(data: Partial<Transaction>): Promise<Transaction> {
-    const [transaction] = await db.insert(transactions).values(data as any).returning();
-    return transaction;
-  }
-
   async getUserTransactions(userId: number): Promise<Transaction[]> {
     return await db.select().from(transactions)
       .where(eq(transactions.userId, userId))

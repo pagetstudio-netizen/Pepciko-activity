@@ -150,6 +150,7 @@ import {
   formatMsisdn as westpayFormatMsisdn,
 } from "./westpay";
 import {
+  InpayRequestError,
   createPayin as inpayCreatePayin,
   createPayout as inpayCreatePayout,
   createOutTradeNo as inpayCreateOutTradeNo,
@@ -165,6 +166,7 @@ import {
   resolveBankCode as inpayResolveBankCode,
 } from "./inpay";
 import {
+  ashtechTransactionMatches,
   collectPayment as ashtechCollect,
   getCountries as ashtechGetCountries,
   getTransaction as ashtechGetTransaction,
@@ -661,46 +663,39 @@ async function reconcilePpayProsPayout(
 
   const state = Number(stateValue);
   if (state === 0 || state === 1) {
-    return storage.updateWithdrawal(withdrawal.id, {
-      status: "processing",
+    return storage.setWithdrawalProcessing(withdrawal.id, {
       ...(transferId ? { omnipayId: transferId } : {}),
-    });
+    }).then(async (updated) => updated ?? await storage.getWithdrawal(withdrawal.id));
   }
   if (state !== 2 && state !== 3 && state !== 4) {
     throw new Error("État de virement PPayPros inconnu.");
   }
 
   const terminalStatus = state === 2 ? "approved" : "rejected";
-  const finalized = await storage.claimWithdrawalFinalization(withdrawal.id, terminalStatus);
+  const finalized = await storage.finalizeWithdrawal(
+    withdrawal.id,
+    terminalStatus,
+    undefined,
+    transferId ? { omnipayId: transferId } : {},
+    "PPayPros",
+  );
   if (!finalized) return await storage.getWithdrawal(withdrawal.id);
-
-  let updated = finalized;
-  if (transferId) {
-    updated = await storage.updateWithdrawal(withdrawal.id, { omnipayId: transferId });
-  }
-  if (terminalStatus === "rejected") {
-    const user = await storage.getUser(withdrawal.userId);
-    if (user) {
-      await storage.adjustBalance(user.id, "withdrawal", withdrawal.amount);
-    }
-  }
-  return updated;
+  return finalized;
 }
 
 async function reconcilePpayProsPayin(deposit: Deposit, stateValue: unknown): Promise<Deposit | undefined> {
   if (deposit.status === "approved" || deposit.status === "rejected") return deposit;
   const state = Number(stateValue);
   if (state === 2) {
-    const claimedDeposit = await storage.claimDepositApproval(deposit.id);
-    if (claimedDeposit) await creditApprovedDeposit(claimedDeposit);
+    await creditApprovedDeposit(deposit);
     return await storage.getDeposit(deposit.id);
   }
   if ([3, 4, 5, 6].includes(state)) {
-    await storage.claimDepositRejection(deposit.id);
+    await storage.rejectDeposit(deposit.id);
     return await storage.getDeposit(deposit.id);
   }
   if (state === 0 || state === 1 || state === 7) {
-    return storage.updateDeposit(deposit.id, { status: "processing" });
+    return storage.setDepositNonterminalStatus(deposit.id, "processing");
   }
   throw new Error("État de paiement PPayPros inconnu.");
 }
@@ -776,44 +771,21 @@ function getRouteParam(value: string | string[]): string {
   return Array.isArray(value) ? value[0] ?? "" : value;
 }
 
-async function refundRejectedWithdrawal(
-  withdrawal: { id: number; userId: number; amount: number },
-  provider = "InPay",
+async function creditApprovedDeposit(
+  deposit: { id: number; userId: number; amount: number },
+  processedBy?: number,
+  description?: string,
 ) {
-  const user = await storage.getUser(withdrawal.userId);
+  const approved = await storage.approveDepositAndCredit(deposit.id, processedBy, description);
+  if (!approved) return;
+  const user = await storage.getUser(approved.userId);
   if (!user) return;
-  await storage.adjustBalance(user.id, "withdrawal", withdrawal.amount);
-  await storage.createTransaction({
-    userId: user.id,
-    type: "withdrawal_refund",
-    amount: withdrawal.amount.toString(),
-    description: `Remboursement retrait ${provider} #${withdrawal.id}`,
-  });
-}
-
-async function creditApprovedDeposit(deposit: {
-  id: number;
-  userId: number;
-  amount: number;
-}) {
-  const user = await storage.getUser(deposit.userId);
-  if (!user) return;
-
-  await storage.adjustBalance(user.id, "deposit", deposit.amount);
-  await storage.updateUser(user.id, { hasDeposited: true });
-  await storage.createTransaction({
-    userId: user.id,
-    type: "deposit",
-    amount: deposit.amount.toString(),
-    description: `Dépôt RobotPay #${deposit.id}`,
-  });
-  await storage.processDepositReferralCommissions(user.id, deposit.amount);
   void sendTelegramMessage(
     [
       "✅ <b>Dépôt validé</b>",
       `Utilisateur : ${formatTelegramValue(user.fullName)}`,
-      `Montant : <b>${formatTelegramValue(deposit.amount)} XOF</b>`,
-      `Référence : ${formatTelegramValue(deposit.id)}`,
+      `Montant : <b>${formatTelegramValue(approved.amount)} XOF</b>`,
+      `Référence : ${formatTelegramValue(approved.id)}`,
       `Pays : ${formatTelegramValue(user.country)}`,
     ].join("\n"),
   ).catch((error) => console.error("[telegram] deposit notification failed:", error.message));
@@ -839,12 +811,11 @@ async function reconcileDrimPayDeposit(
 
   const status = mapDrimPayStatus(data.status);
   if (status === "approved") {
-    const claimed = await storage.claimDepositApproval(deposit.id);
-    if (claimed) await creditApprovedDeposit(claimed);
+    await creditApprovedDeposit(deposit);
   } else if (status === "rejected") {
-    await storage.claimDepositRejection(deposit.id);
+    await storage.rejectDeposit(deposit.id);
   } else if (deposit.status === "pending") {
-    await storage.updateDeposit(deposit.id, { status: "processing" });
+    await storage.setDepositNonterminalStatus(deposit.id, "processing");
   }
   if (status === "approved" || status === "rejected") {
     await storage.clearDrimPayStatusCheckCount(deposit.id).catch(() => undefined);
@@ -871,7 +842,7 @@ export async function reconcilePendingDrimPayDeposits() {
       }
 
       if (attempt > DRIMPAY_MAX_PAYIN_STATUS_CHECKS) {
-        await storage.claimDepositRejection(deposit.id);
+        await storage.rejectDeposit(deposit.id);
         await storage.clearDrimPayStatusCheckCount(deposit.id).catch(() => undefined);
         continue;
       }
@@ -881,14 +852,14 @@ export async function reconcilePendingDrimPayDeposits() {
         const updated = await reconcileDrimPayDeposit(deposit, providerStatus);
         if (updated.status === "approved" || updated.status === "rejected") continue;
         if (attempt === DRIMPAY_MAX_PAYIN_STATUS_CHECKS) {
-          await storage.claimDepositRejection(deposit.id);
+          await storage.rejectDeposit(deposit.id);
           await storage.clearDrimPayStatusCheckCount(deposit.id).catch(() => undefined);
           console.info(`[drimpay] deposit #${deposit.id} marked failed after five status checks`);
         }
       } catch (error: any) {
         console.error(`[drimpay] automatic status check ${attempt}/${DRIMPAY_MAX_PAYIN_STATUS_CHECKS} failed for deposit #${deposit.id}:`, error?.message || error);
         if (attempt === DRIMPAY_MAX_PAYIN_STATUS_CHECKS) {
-          await storage.claimDepositRejection(deposit.id);
+          await storage.rejectDeposit(deposit.id);
           await storage.clearDrimPayStatusCheckCount(deposit.id).catch(() => undefined);
           console.info(`[drimpay] deposit #${deposit.id} marked failed after five status checks`);
         }
@@ -929,13 +900,15 @@ async function reconcileDrimPayPayout(
 
   const status = mapDrimPayStatus(data.status);
   if (status === "approved" || status === "rejected") {
-    const finalized = await storage.claimWithdrawalFinalization(withdrawal.id, status);
-    if (finalized && status === "rejected") {
-      await refundRejectedWithdrawal(finalized, "DrimPay");
-    }
+    await storage.finalizeWithdrawal(
+      withdrawal.id,
+      status,
+      undefined,
+      data.reference ? { drimpayReference: String(data.reference) } : {},
+      "DrimPay",
+    );
   } else if (withdrawal.status !== "approved" && withdrawal.status !== "rejected") {
-    await storage.updateWithdrawal(withdrawal.id, {
-      status: "processing",
+    await storage.setWithdrawalProcessing(withdrawal.id, {
       ...(data.reference ? { drimpayReference: String(data.reference) } : {}),
     });
   }
@@ -1669,15 +1642,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Déjà réclamé aujourd'hui" });
       }
 
-      await storage.adjustBalance(user.id, "deposit", product.dailyEarnings);
-      await storage.updateUser(user.id, { lastFreeProductClaim: new Date() });
-
-      await storage.createTransaction({
-        userId: user.id,
-        type: "free_claim",
-        amount: product.dailyEarnings.toString(),
-        description: "Bonus produit gratuit",
-      });
+      const claimed = await storage.claimFreeProductReward(user.id, product.dailyEarnings);
+      if (!claimed) return res.status(409).json({ message: "Déjà réclamé aujourd'hui" });
 
       res.json({ success: true });
     } catch (error: any) {
@@ -2279,7 +2245,7 @@ export async function registerRoutes(
           });
           const payData = typeof payment.payData === "string" ? payment.payData : "";
           if (payment.payDataType !== "payUrl" || !payData) {
-            await storage.updateDeposit(deposit.id, { status: "rejected", processedAt: new Date() });
+            await storage.rejectDeposit(deposit.id);
             return res.status(502).json({
               message: "PPayPros n'a pas renvoyé de lien de paiement pour ce dépôt.",
               ppaypros: true,
@@ -2289,11 +2255,11 @@ export async function registerRoutes(
           try {
             checkoutUrl = new URL(payData);
           } catch {
-            await storage.updateDeposit(deposit.id, { status: "rejected", processedAt: new Date() });
+            await storage.rejectDeposit(deposit.id);
             return res.status(502).json({ message: "PPayPros a renvoyé un lien de paiement invalide.", ppaypros: true });
           }
           if (checkoutUrl.protocol !== "https:") {
-            await storage.updateDeposit(deposit.id, { status: "rejected", processedAt: new Date() });
+            await storage.rejectDeposit(deposit.id);
             return res.status(502).json({ message: "PPayPros a renvoyé un lien non sécurisé.", ppaypros: true });
           }
           await storage.updateDeposit(deposit.id, {
@@ -2305,7 +2271,7 @@ export async function registerRoutes(
             // A provider-declared rejection is definitive; transport errors remain pending
             // so a late notification can still be reconciled safely.
             if (ppayProsDepositId !== null) {
-              await storage.claimDepositRejection(ppayProsDepositId);
+              await storage.rejectDeposit(ppayProsDepositId);
             }
           }
           console.error("[ppaypros] payin error:", ppayProsError.message);
@@ -2365,14 +2331,14 @@ export async function registerRoutes(
             notificationUrl: `${getPublicBaseUrl(req)}/api/webhooks/inpay`,
             outTradeNo,
           });
-          const deposit = await storage.updateDeposit(inpayDeposit.id, {
-           status: "processing",
+          const deposit = await storage.setDepositNonterminalStatus(inpayDeposit.id, "processing", {
             inpayOutTradeNo: outTradeNo,
             inpayOrderNumber: result.orderNumber,
           });
+          if (!deposit) throw new Error("Le dépôt InPay a déjà été traité.");
           return res.json({ deposit, inpayUrl: result.url, inpay: true });
         } catch (inpayError: any) {
-          await storage.updateDeposit(inpayDeposit.id, { status: "rejected", processedAt: new Date() });
+          await storage.rejectDeposit(inpayDeposit.id);
           console.error("[inpay] payin error:", inpayError);
           return res.status(400).json({ message: inpayError.message || "Erreur InPay", inpay: true });
         }
@@ -2459,29 +2425,12 @@ export async function registerRoutes(
           const newStatus = mapSoleaspayStatus(verifyResult.status);
 
           if (newStatus !== "pending" && newStatus !== deposit.status) {
-            await storage.updateDeposit(depositId, { 
-              status: newStatus,
-              processedAt: new Date()
-            });
-
             if (newStatus === "approved") {
-              const user = await storage.getUser(deposit.userId);
-              if (user) {
-                await storage.adjustBalance(user.id, "deposit", deposit.amount);
-                await storage.updateUser(deposit.userId, {
-                  hasDeposited: true,
-                });
-
-                await storage.createTransaction({
-                  userId: deposit.userId,
-                  type: "deposit",
-                  amount: deposit.amount.toString(),
-                  description: `Depot Soleaspay #${deposit.id}`,
-                });
-
-                await storage.processDepositReferralCommissions(deposit.userId, deposit.amount);
-              }
-
+              await creditApprovedDeposit(deposit, undefined, `Dépôt #${deposit.id} approuvé`);
+            } else if (newStatus === "rejected") {
+              await storage.rejectDeposit(deposit.id);
+            } else {
+              await storage.setDepositNonterminalStatus(deposit.id, newStatus);
             }
           }
 
@@ -2717,7 +2666,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       if (depositId && error instanceof DrimPayApiError && error.status >= 400 && error.status < 500) {
-        await storage.claimDepositRejection(depositId).catch(() => undefined);
+        await storage.rejectDeposit(depositId).catch(() => undefined);
       }
       console.error("[drimpay] payin error:", error?.message || error);
       return res.status(error instanceof DrimPayApiError && error.status >= 400 && error.status < 500 ? 400 : 502)
@@ -2830,17 +2779,33 @@ export async function registerRoutes(
         notifyUrl: `${notifyBaseUrl}/api/webhooks/ashtechpay`,
         ...(otp ? { otp: String(otp).trim() } : {}),
       });
+      if (!ashtechTransactionMatches(result, {
+        amount: numericAmount,
+        countryCode,
+        reference,
+      })) {
+        throw new Error("La réponse AshtechPay ne correspond pas à la demande de dépôt.");
+      }
 
       const mappedStatus = mapAshtechStatus(result.status);
-      const deposit = existingDeposit
-        ? await storage.updateDeposit(existingDeposit.id, {
-            // Keep successful responses claimable by the idempotent approval
-            // gate below before crediting the wallet.
-            status: mappedStatus === "approved" ? "processing" : mappedStatus,
-            ashtechTransactionId: result.transaction_id || existingDeposit.ashtechTransactionId,
-            ashtechReference: reference,
-          })
-        : await storage.createDeposit({
+      let deposit;
+      if (existingDeposit) {
+        if (mappedStatus === "rejected") {
+          await storage.rejectDeposit(existingDeposit.id);
+          deposit = await storage.getDeposit(existingDeposit.id);
+        } else {
+          deposit = await storage.setDepositNonterminalStatus(
+            existingDeposit.id,
+            mappedStatus === "approved" ? "processing" : mappedStatus,
+            {
+              ashtechTransactionId: result.transaction_id || existingDeposit.ashtechTransactionId,
+              ashtechReference: reference,
+            },
+          );
+        }
+        if (!deposit) throw new Error("Ce dépôt AshtechPay a déjà été traité.");
+      } else {
+        deposit = await storage.createDeposit({
             userId: user.id,
             amount: numericAmount,
             accountName: user.fullName,
@@ -2851,10 +2816,10 @@ export async function registerRoutes(
             ashtechTransactionId: result.transaction_id,
             ashtechReference: reference,
           });
+      }
 
       if (mappedStatus === "approved") {
-        const claimedDeposit = await storage.claimDepositApproval(deposit.id);
-        if (claimedDeposit) await creditApprovedDeposit(claimedDeposit);
+        await creditApprovedDeposit(deposit);
       }
 
       res.status(202).json({
@@ -2895,7 +2860,11 @@ export async function registerRoutes(
           || (requestCountry === "BF" && /orange/i.test(String(requestOperator)) ? `*144*4*6*${otpAmount}#` : null)
           || (requestCountry === "CI" && /orange/i.test(String(requestOperator)) ? "#144*82#" : null);
         const otpDeposit = otpExistingDeposit
-          ? await storage.updateDeposit(otpExistingDeposit.id, { status: "pending", ashtechReference: otpReference })
+          ? await storage.setDepositNonterminalStatus(
+              otpExistingDeposit.id,
+              "pending",
+              { ashtechReference: otpReference },
+            )
           : await storage.createDeposit({
               userId: otpUser.id,
               amount: otpAmount,
@@ -2906,6 +2875,9 @@ export async function registerRoutes(
               status: "pending",
               ashtechReference: otpReference,
             });
+        if (!otpDeposit) {
+          return res.status(409).json({ message: "Ce dépôt AshtechPay a déjà été traité." });
+        }
 
         return res.status(400).json({
           error: "otp_required",
@@ -2933,28 +2905,22 @@ export async function registerRoutes(
       if (!deposit.ashtechTransactionId) return res.json({ status: deposit.status });
 
       const result = await ashtechGetTransaction(deposit.ashtechTransactionId);
+      if (!ashtechTransactionMatches(result, {
+        amount: Number(deposit.amount),
+        countryCode: deposit.country,
+        reference: deposit.ashtechReference,
+        transactionId: deposit.ashtechTransactionId,
+      })) {
+        return res.status(502).json({ message: "La transaction AshtechPay ne correspond pas à ce dépôt." });
+      }
       const newStatus = mapAshtechStatus(result.status);
       if (newStatus !== "pending" && newStatus !== deposit.status) {
         if (newStatus === "approved") {
-          // The conditional update is the idempotency gate: only the request
-          // that claims the pending deposit is allowed to credit the wallet.
-          const claimedDeposit = await storage.claimDepositApproval(deposit.id);
-          if (claimedDeposit) {
-            const user = await storage.getUser(deposit.userId);
-            if (user) {
-              await storage.adjustBalance(user.id, "deposit", deposit.amount);
-              await storage.updateUser(user.id, { hasDeposited: true });
-              await storage.createTransaction({
-                userId: user.id,
-                type: "deposit",
-                amount: deposit.amount.toString(),
-                description: `Dépôt AshtechPay #${deposit.id}`,
-              });
-              await storage.processDepositReferralCommissions(user.id, deposit.amount);
-            }
-          }
+          await creditApprovedDeposit(deposit, undefined, `Dépôt #${deposit.id} approuvé`);
+        } else if (newStatus === "rejected") {
+          await storage.rejectDeposit(deposit.id);
         } else {
-          await storage.updateDeposit(deposit.id, { status: newStatus, processedAt: new Date() });
+          await storage.setDepositNonterminalStatus(deposit.id, newStatus);
         }
       }
       const finalDeposit = await storage.getDeposit(deposit.id);
@@ -3091,7 +3057,7 @@ export async function registerRoutes(
         operatorId,
       });
 
-      await storage.updateDeposit(deposit.id, { status: "processing" });
+      await storage.setDepositNonterminalStatus(deposit.id, "processing");
       const response = typeof result.otpToken === "string" && result.otpToken
         ? { ...result, otpToken: signSendavaOtpTicket(result.otpToken, user.id, deposit.id) }
         : result;
@@ -3150,7 +3116,7 @@ export async function registerRoutes(
       }
       const result = await sendavapayRetry(deposit.sendavapayToken);
       if (result.success) {
-        await storage.updateDeposit(deposit.id, { status: "processing" });
+        await storage.setDepositNonterminalStatus(deposit.id, "processing");
       }
       res.json(result);
     } catch (error: any) {
@@ -3189,10 +3155,11 @@ export async function registerRoutes(
       const newStatus = mapSendavapayStatus(statusData.data.status);
       if (newStatus !== "pending" && newStatus !== deposit.status) {
         if (newStatus === "approved") {
-          const claimedDeposit = await storage.claimDepositApproval(depositId);
-          if (claimedDeposit) await creditApprovedDeposit(claimedDeposit);
+          await creditApprovedDeposit(deposit);
+        } else if (newStatus === "rejected") {
+          await storage.rejectDeposit(depositId);
         } else {
-          await storage.updateDeposit(depositId, { status: newStatus, processedAt: new Date() });
+          await storage.setDepositNonterminalStatus(depositId, newStatus);
         }
       }
 
@@ -3309,8 +3276,8 @@ export async function registerRoutes(
       const event = String(payload.event || "").toLowerCase();
       const rawStatus = String(payload.status || payload.data?.status || "").toLowerCase();
 
-      // Acknowledge only after authenticating the delivery. The fulfillment
-      // itself remains idempotent through claimDepositApproval.
+      // Acknowledge only after authenticating the delivery. Financial
+      // fulfillment is committed atomically with the status transition.
       res.status(200).json({ received: true });
 
       let deposit = transactionId
@@ -3322,18 +3289,26 @@ export async function registerRoutes(
       if (!deposit || deposit.status === "approved" || deposit.status === "rejected") return;
 
       if (event === "payment.failed" || ["failed", "expired", "cancelled", "canceled", "rejected"].includes(rawStatus)) {
-        await storage.updateDeposit(deposit.id, { status: "rejected", processedAt: new Date() });
+        await storage.rejectDeposit(deposit.id);
         return;
       }
 
       if (!deposit.ashtechTransactionId) return;
       const verified = await ashtechGetTransaction(deposit.ashtechTransactionId);
+      if (!ashtechTransactionMatches(verified, {
+        amount: Number(deposit.amount),
+        countryCode: deposit.country,
+        reference: deposit.ashtechReference,
+        transactionId: deposit.ashtechTransactionId,
+      })) {
+        console.warn(`[ashtechpay webhook] Transaction mismatch for deposit #${deposit.id}`);
+        return;
+      }
       const verifiedStatus = mapAshtechStatus(verified.status);
       if (verifiedStatus === "approved") {
-        const claimedDeposit = await storage.claimDepositApproval(deposit.id);
-        if (claimedDeposit) await creditApprovedDeposit(claimedDeposit);
+        await creditApprovedDeposit(deposit, undefined, `Dépôt #${deposit.id} approuvé`);
       } else if (verifiedStatus === "rejected") {
-        await storage.updateDeposit(deposit.id, { status: "rejected", processedAt: new Date() });
+        await storage.rejectDeposit(deposit.id);
       }
     } catch (error: any) {
       console.error("[ashtechpay webhook] verification error:", error);
@@ -3373,16 +3348,25 @@ export async function registerRoutes(
           console.warn(`[sendavapay webhook] No deposit found for reference ${reference}`);
           return res.json({ received: true });
         }
+        const reportedAmount = payload.amount ?? payload.total_fee ?? payload.data?.amount;
+        if (
+          reportedAmount !== undefined &&
+          (
+            !Number.isFinite(Number(reportedAmount)) ||
+            Math.abs(Number(reportedAmount) - Number(deposit.amount)) > 0.01
+          )
+        ) {
+          return res.status(400).json({ message: "Le montant du callback ne correspond pas au dépôt." });
+        }
 
         if (deposit.status === "approved" || deposit.status === "rejected") {
           return res.json({ received: true }); // already processed
         }
 
         if (event === "payment.completed" || status === "completed") {
-          const claimedDeposit = await storage.claimDepositApproval(deposit.id);
-          if (claimedDeposit) await creditApprovedDeposit(claimedDeposit);
+          await creditApprovedDeposit(deposit);
         } else if (event === "payment.failed" || event === "payment.expired" || status === "failed" || status === "cancelled") {
-          await storage.updateDeposit(deposit.id, { status: "rejected", processedAt: new Date() });
+          await storage.rejectDeposit(deposit.id);
         }
 
         res.json({ received: true });
@@ -3454,12 +3438,21 @@ export async function registerRoutes(
           console.warn(`[westpay webhook] Aucun dépôt pour référence: ${transactionReference}`);
           return res.json({ received: true });
         }
+        const reportedAmount = payload.amount ?? payload.total_fee ?? payload.data?.amount;
+        if (
+          reportedAmount !== undefined &&
+          (
+            !Number.isFinite(Number(reportedAmount)) ||
+            Math.abs(Number(reportedAmount) - Number(deposit.amount)) > 0.01
+          )
+        ) {
+          return res.status(400).json({ message: "Le montant du callback ne correspond pas au dépôt." });
+        }
         if (deposit.status === "approved" || deposit.status === "rejected") {
           return res.json({ received: true });
         }
         if (event === "payment.confirmed" || status === "confirmed") {
-          const claimedDeposit = await storage.claimDepositApproval(deposit.id);
-          if (claimedDeposit) await creditApprovedDeposit(claimedDeposit);
+          await creditApprovedDeposit(deposit);
         } else if (
           event === "payment.failed" ||
           event === "payment.expired" ||
@@ -3467,7 +3460,7 @@ export async function registerRoutes(
           status === "expired" ||
           status === "cancelled"
         ) {
-          await storage.updateDeposit(deposit.id, { status: "rejected", processedAt: new Date() });
+          await storage.rejectDeposit(deposit.id);
         }
         res.json({ received: true });
       } catch (err: any) {
@@ -3584,26 +3577,56 @@ export async function registerRoutes(
       if (isPayout) {
         const withdrawal = await storage.getWithdrawalByInpayOutTradeNo(outTradeNo);
         if (!withdrawal) return res.send("success");
+        const countryAccount = inpayFindVerifiedAccount(payload, settings, withdrawal.country);
+        if (!countryAccount) return res.status(401).send("fail");
+        const callbackCountry = String(payload.country_prefix || "").trim();
+        if (callbackCountry && callbackCountry !== countryAccount.countryPrefix) {
+          return res.status(400).send("country mismatch");
+        }
+        const reportedAmount = payload.total_fee ?? payload.amount ?? payload.money;
+        if (
+          reportedAmount !== undefined &&
+          (
+            !Number.isFinite(Number(reportedAmount)) ||
+            Math.round(Number(reportedAmount)) !== Math.round(Number(withdrawal.netAmount))
+          )
+        ) {
+          return res.status(400).send("amount mismatch");
+        }
 
         const status = mapInpayPayoutStatus(payload.status || payload.trade_status || payload.result);
         if (status === "approved") {
-          await storage.claimWithdrawalFinalization(withdrawal.id, "approved");
+          await storage.finalizeWithdrawal(withdrawal.id, "approved");
         } else if (status === "rejected" || String(payload.is_reverse) === "2") {
-          const claimed = await storage.claimWithdrawalFinalization(withdrawal.id, "rejected");
-          if (claimed) await refundRejectedWithdrawal(claimed);
+          await storage.finalizeWithdrawal(withdrawal.id, "rejected", undefined, {}, "InPay");
         }
         return res.send("success");
       }
 
       const deposit = await storage.getDepositByInpayOutTradeNo(outTradeNo);
       if (!deposit) return res.send("success");
+      const countryAccount = inpayFindVerifiedAccount(payload, settings, deposit.country);
+      if (!countryAccount) return res.status(401).send("fail");
+      const callbackCountry = String(payload.country_prefix || "").trim();
+      if (callbackCountry && callbackCountry !== countryAccount.countryPrefix) {
+        return res.status(400).send("country mismatch");
+      }
+      const reportedAmount = payload.total_fee ?? payload.amount ?? payload.money;
+      if (
+        reportedAmount !== undefined &&
+        (
+          !Number.isFinite(Number(reportedAmount)) ||
+          Math.abs(Number(reportedAmount) - Number(deposit.amount)) > 0.01
+        )
+      ) {
+        return res.status(400).send("amount mismatch");
+      }
 
       const status = mapInpayPayinStatus(payload.status || payload.trade_status || payload.result);
       if (status === "approved") {
-        const claimed = await storage.claimDepositApproval(deposit.id);
-        if (claimed) await creditApprovedDeposit(claimed);
+        await creditApprovedDeposit(deposit);
       } else if (status === "rejected") {
-        await storage.updateDeposit(deposit.id, { status: "rejected", processedAt: new Date() });
+        await storage.rejectDeposit(deposit.id);
       }
       return res.send("success");
     } catch (error: any) {
@@ -4275,29 +4298,16 @@ export async function registerRoutes(
 
   app.post("/api/admin/deposits/:id/approve", requireAdmin, async (req, res) => {
     try {
-      const deposit = await storage.claimAdminDepositApproval(parseInt(getRouteParam(req.params.id)), req.session.userId!);
-      if (!deposit) return res.status(409).json({ message: "Ce dépôt est déjà approuvé" });
+      const deposit = await storage.approveDepositAndCredit(
+        parseInt(getRouteParam(req.params.id)),
+        req.session.userId!,
+        "Dépôt validé",
+      );
+      if (!deposit) return res.status(409).json({ message: "Ce dépôt a déjà été traité." });
       if (deposit.drimpayOrderId) {
         await storage.clearDrimPayStatusCheckCount(deposit.id).catch(() => undefined);
       }
 
-      const user = await storage.getUser(deposit.userId);
-      if (user) {
-        await storage.adjustBalance(user.id, "deposit", deposit.amount);
-        await storage.updateUser(user.id, {
-          hasDeposited: true,
-        });
-
-        await storage.createTransaction({
-          userId: user.id,
-          type: "deposit",
-          amount: deposit.amount.toString(),
-          description: "Dépôt validé",
-        });
-        await storage.processDepositReferralCommissions(deposit.userId, deposit.amount);
-      }
-
-      await storage.logAdminAction(req.session.userId!, "approve_deposit", deposit.userId, `Dépôt ${deposit.id} approuvé: ${deposit.amount}F`);
       res.json(deposit);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4307,12 +4317,12 @@ export async function registerRoutes(
   app.post("/api/admin/deposits/:id/reject", requireAdmin, async (req, res) => {
     try {
       const { ban } = req.body;
-      const deposit = await storage.updateDeposit(parseInt(getRouteParam(req.params.id)), {
-        status: "rejected",
-        processedAt: new Date(),
-        processedBy: req.session.userId,
-        screenshot: null,
-      });
+      const deposit = await storage.rejectDeposit(
+        parseInt(getRouteParam(req.params.id)),
+        req.session.userId!,
+        true,
+      );
+      if (!deposit) return res.status(409).json({ message: "Ce dépôt a déjà été traité." });
       if (deposit.drimpayOrderId) {
         await storage.clearDrimPayStatusCheckCount(deposit.id).catch(() => undefined);
       }
@@ -4322,7 +4332,6 @@ export async function registerRoutes(
         await storage.logAdminAction(req.session.userId!, "ban_user", deposit.userId, `Utilisateur banni pour fraude`);
       }
 
-      await storage.logAdminAction(req.session.userId!, "reject_deposit", deposit.userId, `Dépôt ${deposit.id} rejeté`);
       res.json(deposit);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4384,20 +4393,17 @@ export async function registerRoutes(
   app.post("/api/admin/withdrawals/:id/approve", requireAdmin, async (req, res) => {
     try {
       const withdrawalId = parseInt(getRouteParam(req.params.id));
-      const existingWithdrawal = await storage.getWithdrawals();
-      const withdrawalData = existingWithdrawal.find(w => w.id === withdrawalId);
-      
-      if (!withdrawalData) {
-        return res.status(404).json({ message: "Retrait non trouve" });
-      }
-
-      const withdrawal = await storage.updateWithdrawal(withdrawalId, {
-        status: "approved",
-        processedAt: new Date(),
-        processedBy: req.session.userId,
-      });
-
-      await storage.logAdminAction(req.session.userId!, "approve_withdrawal", withdrawalData.userId, `Retrait ${withdrawal.id} approuvé: ${withdrawalData.netAmount}F`);
+      const withdrawalData = await storage.getWithdrawal(withdrawalId);
+      if (!withdrawalData) return res.status(404).json({ message: "Retrait non trouvé" });
+      const withdrawal = await storage.finalizeWithdrawal(
+        withdrawalId,
+        "approved",
+        req.session.userId!,
+        {},
+        undefined,
+        ["pending"],
+      );
+      if (!withdrawal) return res.status(409).json({ message: "Ce retrait a déjà été traité." });
       res.json(withdrawal);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4406,19 +4412,18 @@ export async function registerRoutes(
 
   app.post("/api/admin/withdrawals/:id/reject", requireAdmin, async (req, res) => {
     try {
-      const withdrawal = await storage.updateWithdrawal(parseInt(getRouteParam(req.params.id)), {
-        status: "rejected",
-        processedAt: new Date(),
-        processedBy: req.session.userId,
-      });
-
-      // Refund the user
-      const user = await storage.getUser(withdrawal.userId);
-      if (user) {
-        await storage.adjustBalance(user.id, "withdrawal", withdrawal.amount);
-      }
-
-      await storage.logAdminAction(req.session.userId!, "reject_withdrawal", withdrawal.userId, `Retrait ${withdrawal.id} rejeté et remboursé`);
+      const withdrawalId = parseInt(getRouteParam(req.params.id));
+      const existing = await storage.getWithdrawal(withdrawalId);
+      if (!existing) return res.status(404).json({ message: "Retrait non trouvé" });
+      const withdrawal = await storage.finalizeWithdrawal(
+        withdrawalId,
+        "rejected",
+        req.session.userId!,
+        {},
+        "Admin",
+        ["pending"],
+      );
+      if (!withdrawal) return res.status(409).json({ message: "Ce retrait a déjà été traité." });
       res.json(withdrawal);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4426,10 +4431,10 @@ export async function registerRoutes(
   });
 
   app.post("/api/admin/withdrawals/:id/inpay", requireAdmin, async (req, res) => {
+    let claimedOutTradeNo: string | undefined;
     try {
       const withdrawalId = parseInt(getRouteParam(req.params.id));
-      const allWithdrawals = await storage.getWithdrawals();
-      const withdrawal = allWithdrawals.find((item) => item.id === withdrawalId);
+      const withdrawal = await storage.getWithdrawal(withdrawalId);
       if (!withdrawal) return res.status(404).json({ message: "Retrait non trouvé" });
       if (withdrawal.status !== "pending") {
         return res.status(409).json({ message: "Ce retrait a déjà été traité ou envoyé" });
@@ -4443,6 +4448,9 @@ export async function registerRoutes(
       const account = getInpayAccount(country, settings);
       const bankCode = inpayResolveBankCode(country, withdrawal.paymentMethod);
       const outTradeNo = inpayCreateOutTradeNo("PAYOUT", withdrawal.id, withdrawal.userId);
+      const claimed = await storage.claimInpayWithdrawal(withdrawal.id, outTradeNo);
+      if (!claimed) return res.status(409).json({ message: "Ce retrait a déjà été traité ou envoyé" });
+      claimedOutTradeNo = outTradeNo;
       const result = await inpayCreatePayout({
         amount: withdrawal.netAmount,
         country,
@@ -4457,8 +4465,6 @@ export async function registerRoutes(
         outTradeNo,
       });
       const updated = await storage.updateWithdrawal(withdrawal.id, {
-        status: "processing",
-        inpayOutTradeNo: outTradeNo,
         inpayOrderNumber: result.orderNumber || null,
       });
       await storage.logAdminAction(
@@ -4469,6 +4475,12 @@ export async function registerRoutes(
       );
       res.json(updated);
     } catch (error: any) {
+      if (claimedOutTradeNo && error instanceof InpayRequestError && error.providerRejected) {
+        await storage.releaseInpayWithdrawal(
+          Number.parseInt(getRouteParam(req.params.id), 10),
+          claimedOutTradeNo,
+        ).catch(() => undefined);
+      }
       void sendTelegramInpayError({
         operation: "Retrait payout",
         error,
@@ -4864,12 +4876,6 @@ export async function registerRoutes(
             return res.status(400).json({ message: "Saisissez deux soldes valides, positifs ou nuls." });
           }
           await storage.setBalances(userId, depositBalance, withdrawalBalance, req.session.userId!);
-          await storage.logAdminAction(
-            req.session.userId!,
-            "update_balances",
-            userId,
-            `Soldes modifiés — dépôt: ${depositBalance}F, retrait: ${withdrawalBalance}F`,
-          );
           break;
         }
         case "password": {
@@ -5725,18 +5731,12 @@ export async function registerRoutes(
 
   app.post("/api/banker/deposits/:id/approve", requireBanker, async (req, res) => {
     try {
-      const deposit = await storage.updateDeposit(parseInt(getRouteParam(req.params.id)), {
-        status: "approved",
-        processedAt: new Date(),
-        processedBy: req.session.userId,
-      });
-      const user = await storage.getUser(deposit.userId);
-      if (user) {
-        await storage.adjustBalance(user.id, "deposit", deposit.amount);
-        await storage.updateUser(user.id, { hasDeposited: true });
-        await storage.createTransaction({ userId: user.id, type: "deposit", amount: deposit.amount.toString(), description: "Dépôt validé par bankier" });
-      }
-      await storage.logAdminAction(req.session.userId!, "approve_deposit", deposit.userId, `Dépôt ${deposit.id} approuvé par bankier: ${deposit.amount}F`);
+      const deposit = await storage.approveDepositAndCredit(
+        parseInt(getRouteParam(req.params.id)),
+        req.session.userId!,
+        "Dépôt validé par bankier",
+      );
+      if (!deposit) return res.status(409).json({ message: "Ce dépôt a déjà été traité." });
       res.json(deposit);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -5745,13 +5745,12 @@ export async function registerRoutes(
 
   app.post("/api/banker/deposits/:id/reject", requireBanker, async (req, res) => {
     try {
-      const deposit = await storage.updateDeposit(parseInt(getRouteParam(req.params.id)), {
-        status: "rejected",
-        processedAt: new Date(),
-        processedBy: req.session.userId,
-        screenshot: null,
-      });
-      await storage.logAdminAction(req.session.userId!, "reject_deposit", deposit.userId, `Dépôt ${deposit.id} rejeté par bankier`);
+      const deposit = await storage.rejectDeposit(
+        parseInt(getRouteParam(req.params.id)),
+        req.session.userId!,
+        true,
+      );
+      if (!deposit) return res.status(409).json({ message: "Ce dépôt a déjà été traité." });
       res.json(deposit);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -5760,15 +5759,18 @@ export async function registerRoutes(
 
   app.post("/api/banker/withdrawals/:id/approve", requireBanker, async (req, res) => {
     try {
-      const allWithdrawals = await storage.getWithdrawals();
-      const withdrawalData = allWithdrawals.find(w => w.id === parseInt(getRouteParam(req.params.id)));
-      if (!withdrawalData) return res.status(404).json({ message: "Retrait non trouvé" });
-      const withdrawal = await storage.updateWithdrawal(parseInt(getRouteParam(req.params.id)), {
-        status: "approved",
-        processedAt: new Date(),
-        processedBy: req.session.userId,
-      });
-      await storage.logAdminAction(req.session.userId!, "approve_withdrawal", withdrawalData.userId, `Retrait ${withdrawal.id} approuvé par bankier: ${withdrawalData.netAmount}F`);
+      const withdrawalId = parseInt(getRouteParam(req.params.id));
+      const existing = await storage.getWithdrawal(withdrawalId);
+      if (!existing) return res.status(404).json({ message: "Retrait non trouvé" });
+      const withdrawal = await storage.finalizeWithdrawal(
+        withdrawalId,
+        "approved",
+        req.session.userId!,
+        {},
+        undefined,
+        ["pending"],
+      );
+      if (!withdrawal) return res.status(409).json({ message: "Ce retrait a déjà été traité." });
       res.json(withdrawal);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -5777,16 +5779,15 @@ export async function registerRoutes(
 
   app.post("/api/banker/withdrawals/:id/reject", requireBanker, async (req, res) => {
     try {
-      const withdrawal = await storage.updateWithdrawal(parseInt(getRouteParam(req.params.id)), {
-        status: "rejected",
-        processedAt: new Date(),
-        processedBy: req.session.userId,
-      });
-      const user = await storage.getUser(withdrawal.userId);
-      if (user) {
-        await storage.adjustBalance(user.id, "withdrawal", withdrawal.amount);
-      }
-      await storage.logAdminAction(req.session.userId!, "reject_withdrawal", withdrawal.userId, `Retrait ${withdrawal.id} rejeté par bankier et remboursé`);
+      const withdrawal = await storage.finalizeWithdrawal(
+        parseInt(getRouteParam(req.params.id)),
+        "rejected",
+        req.session.userId!,
+        {},
+        "Banker",
+        ["pending"],
+      );
+      if (!withdrawal) return res.status(409).json({ message: "Ce retrait a déjà été traité." });
       res.json(withdrawal);
     } catch (error: any) {
       res.status(400).json({ message: error.message });

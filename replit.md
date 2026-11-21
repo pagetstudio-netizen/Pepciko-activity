@@ -14,7 +14,7 @@ Preferred communication style: Simple, everyday language.
 - Dependencies are installed from the root `package.json`. `npm run check`, `npm test`, and `npm run build` validate the project.
 - The user authorized initializing the empty Replit **development** PostgreSQL database for this import. Its schema and initial catalog/settings have been initialized. Existing Supabase data has not been copied or changed.
 - Runtime and Drizzle prefer `SUPABASE_DATABASE_URL` if configured; otherwise they use the managed `DATABASE_URL`. Keep `SESSION_SECRET` in Secrets.
-- No administrator was provisioned because `ADMIN_PASSWORD` is absent. To provision one, configure `ADMIN_PHONE`, `ADMIN_PASSWORD`, and optionally `ADMIN_PIN` in Secrets, then restart the workflow. Never commit credentials.
+- Bootstrap Admin provisioning reads `ADMIN_PHONE`, `ADMIN_PASSWORD`, and optionally `ADMIN_PIN` from Replit Secrets; none of these values belong in source code or `.replit`.
 - Payment-provider credentials have not been imported. The seeded payment settings do not mean live payments are operational.
 - The separate Authentication preview artifact is not required to run the main app.
 - Signed-out login rendering was checked. Signed-in user/admin screens have not been visually verified.

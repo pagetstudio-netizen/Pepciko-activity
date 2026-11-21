@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collectPayment, getTransaction } from "./ashtechpay";
+import { ashtechTransactionMatches, collectPayment, getTransaction } from "./ashtechpay";
 
 const collectParams = {
   amount: 1000,
@@ -47,6 +47,29 @@ function ashtechResponse() {
     headers: { "Content-Type": "application/json" },
   });
 }
+
+test("AshtechPay rejects provider transactions that do not match the deposit", () => {
+  const transaction = {
+    transaction_id: "test-transaction",
+    reference: "test-reference",
+    status: "success",
+    amount: 1000,
+    currency: "XOF",
+    country_code: "TG",
+  };
+  const expected = {
+    amount: 1000,
+    countryCode: "TG",
+    reference: "test-reference",
+    transactionId: "test-transaction",
+    currency: "XOF",
+  };
+
+  assert.equal(ashtechTransactionMatches(transaction, expected), true);
+  assert.equal(ashtechTransactionMatches({ ...transaction, amount: 999 }, expected), false);
+  assert.equal(ashtechTransactionMatches({ ...transaction, country_code: "CI" }, expected), false);
+  assert.equal(ashtechTransactionMatches({ ...transaction, reference: "another" }, expected), false);
+});
 
 test("AshtechPay collect sends the configured API-key owner's user ID", async () => {
   let requestBody: Record<string, unknown> | undefined;

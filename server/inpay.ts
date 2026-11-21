@@ -68,12 +68,19 @@ export interface InpayPayoutResult {
 export class InpayRequestError extends Error {
   requestUrl: string;
   requestData: Record<string, unknown>;
+  providerRejected: boolean;
 
-  constructor(message: string, requestUrl: string, requestData: Record<string, unknown>) {
+  constructor(
+    message: string,
+    requestUrl: string,
+    requestData: Record<string, unknown>,
+    providerRejected = false,
+  ) {
     super(message);
     this.name = "InpayRequestError";
     this.requestUrl = requestUrl;
     this.requestData = requestData;
+    this.providerRejected = providerRejected;
   }
 }
 
@@ -333,7 +340,12 @@ export async function createPayout(params: {
     { ...payload, sign: createInpaySignature(payload, params.apiKey) },
   );
   if (String(result.code) !== "0") {
-    throw new Error(result.message || "InPay n'a pas créé le retrait");
+    throw new InpayRequestError(
+      result.message || "InPay n'a pas créé le retrait",
+      `${getInpayApiBase()}/inpays/payout/unifiedorder`,
+      {},
+      true,
+    );
   }
   return {
     orderNumber: result.data?.orderNumber,
@@ -363,9 +375,13 @@ export async function getBalance(params: {
 export function findVerifiedAccount(
   payload: Record<string, unknown>,
   settings: Record<string, string>,
+  country?: string,
 ): InpayAccount | undefined {
   const merchantId = String(payload.merchantid || payload.merchant || "");
-  return Object.keys(INPAY_COUNTRY_PREFIXES)
+  const countries = country
+    ? [country.trim().toUpperCase()]
+    : Object.keys(INPAY_COUNTRY_PREFIXES);
+  return countries
     .map((country) => getInpayAccount(country, settings))
     .find((account) =>
       account.merchantId === merchantId &&

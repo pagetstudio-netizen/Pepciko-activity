@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { seed } from "./seed";
 import { storage } from "./storage";
 import {
+  ashtechTransactionMatches,
   getTransaction as ashtechGetTransaction,
   isAshtechConfigured,
   mapAshtechStatus,
@@ -177,38 +178,29 @@ app.use((req, res, next) => {
         const expired = ageMs >= 3 * 60 * 60 * 1000;
         try {
           const result = await ashtechGetTransaction(deposit.ashtechTransactionId);
+          if (!ashtechTransactionMatches(result, {
+            amount: Number(deposit.amount),
+            countryCode: deposit.country,
+            reference: deposit.ashtechReference,
+            transactionId: deposit.ashtechTransactionId,
+          })) {
+            console.warn(`[ashtechpay] transaction mismatch for deposit #${deposit.id}`);
+            continue;
+          }
           const status = mapAshtechStatus(result.status);
           if (status === "approved") {
-            const claimed = await storage.claimDepositApproval(deposit.id);
-            if (claimed) {
-              const user = await storage.getUser(deposit.userId);
-              if (user) {
-                await storage.adjustBalance(user.id, "deposit", deposit.amount);
-                await storage.updateUser(user.id, {
-                  hasDeposited: true,
-                });
-                await storage.createTransaction({
-                  userId: user.id,
-                  type: "deposit",
-                  amount: deposit.amount.toString(),
-                  description: `Dépôt AshtechPay #${deposit.id}`,
-                });
-                await storage.processDepositReferralCommissions(user.id, deposit.amount);
-              }
-            }
+            await storage.approveDepositAndCredit(
+              deposit.id,
+              undefined,
+              `Dépôt #${deposit.id} approuvé`,
+            );
           } else if (status === "rejected" || expired) {
-            await storage.updateDeposit(deposit.id, {
-              status: "rejected",
-              processedAt: new Date(),
-            });
+            await storage.rejectDeposit(deposit.id);
             log(`AshtechPay deposit #${deposit.id} marked rejected${expired ? " after 3 hours" : ""}`, "ashtechpay");
           }
         } catch (error) {
           if (expired) {
-            await storage.updateDeposit(deposit.id, {
-              status: "rejected",
-              processedAt: new Date(),
-            });
+            await storage.rejectDeposit(deposit.id);
             log(`AshtechPay deposit #${deposit.id} marked rejected after 3 hours (provider unavailable)`, "ashtechpay");
           } else {
             console.error(`[ashtechpay] reconciliation failed for deposit #${deposit.id}:`, error);
