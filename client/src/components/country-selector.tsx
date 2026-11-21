@@ -1,86 +1,8 @@
-import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Check } from "lucide-react";
 import type { ApiCountry } from "@/lib/countries";
 import EmptyState from "@/components/empty-state";
-
-function CountryFlag({ countryCode }: { countryCode: string }) {
-  const code = countryCode.toUpperCase();
-  const clipId = `auth-country-flag-${code.toLowerCase()}`;
-  const star = (
-    <polygon
-      points="18,11.8 19.7,16.2 24.4,16.4 20.8,19.3 22,23.8 18,21.2 14,23.8 15.2,19.3 11.6,16.4 16.3,16.2"
-      fill="#ffdf00"
-    />
-  );
-
-  const artwork: Record<string, JSX.Element> = {
-    TG: (
-      <>
-        <rect width="36" height="36" fill="#006a4e" />
-        <path d="M0 7.2H36M0 21.6H36" stroke="#ffce00" strokeWidth="7.2" />
-        <rect width="20" height="21.6" fill="#d21034" />
-        <polygon points="10,5.6 11.3,8.7 14.7,8.9 12.1,11 13,14.3 10,12.4 7,14.3 7.9,11 5.3,8.9 8.7,8.7" fill="#fff" />
-      </>
-    ),
-    BJ: (
-      <>
-        <rect width="14.4" height="36" fill="#008751" />
-        <rect x="14.4" width="21.6" height="18" fill="#fcd116" />
-        <rect x="14.4" y="18" width="21.6" height="18" fill="#e8112d" />
-      </>
-    ),
-    BF: (
-      <>
-        <rect width="36" height="18" fill="#ef2b2d" />
-        <rect y="18" width="36" height="18" fill="#009e49" />
-        {star}
-      </>
-    ),
-    CM: (
-      <>
-        <rect width="12" height="36" fill="#007a5e" />
-        <rect x="12" width="12" height="36" fill="#ce1126" />
-        <rect x="24" width="12" height="36" fill="#fcd116" />
-        {star}
-      </>
-    ),
-    NE: (
-      <>
-        <rect width="36" height="12" fill="#e05206" />
-        <rect y="12" width="36" height="12" fill="#fff" />
-        <rect y="24" width="36" height="12" fill="#0db02b" />
-        <circle cx="18" cy="18" r="5" fill="#e05206" />
-      </>
-    ),
-  };
-
-  const flagArt = artwork[code];
-
-  return (
-    <span className="auth-picker-flag" aria-hidden="true">
-      {flagArt ? (
-        <svg viewBox="0 0 36 36" focusable="false">
-          <defs>
-            <clipPath id={clipId}>
-              <circle cx="18" cy="18" r="17" />
-            </clipPath>
-          </defs>
-          <g clipPath={`url(#${clipId})`}>{flagArt}</g>
-          <circle cx="18" cy="18" r="17.25" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth=".8" />
-        </svg>
-      ) : (
-        <img
-          src={`https://flagcdn.com/${code.toLowerCase()}.svg`}
-          alt=""
-          loading="lazy"
-          decoding="async"
-        />
-      )}
-    </span>
-  );
-}
 
 interface CountrySelectorProps {
   open: boolean;
@@ -91,6 +13,7 @@ interface CountrySelectorProps {
 
 export function CountrySelector({ open, onClose, onSelect, selectedCountryCode }: CountrySelectorProps) {
   const dialogRef = useRef<HTMLElement | null>(null);
+  const [menuPosition, setMenuPosition] = useState({ left: 20, top: 140 });
   const { data: apiCountries, isLoading, isError, refetch } = useQuery<ApiCountry[]>({
     queryKey: ["/api/countries"],
     enabled: open,
@@ -111,28 +34,46 @@ export function CountrySelector({ open, onClose, onSelect, selectedCountryCode }
     ? selectedCountryCode
     : countries[0]?.code || "";
 
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const trigger = document.querySelector<HTMLElement>('[data-testid="button-select-country"]');
+      if (!trigger) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const menuWidth = 116;
+      const rowHeight = 48;
+      const maxHeight = Math.min(window.innerHeight * 0.78, 480);
+      const contentHeight = isLoading || isError
+        ? 96
+        : Math.min(Math.max(countries.length * rowHeight, rowHeight), maxHeight);
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8));
+      const top = Math.max(
+        8,
+        Math.min(rect.bottom - contentHeight, window.innerHeight - contentHeight - 8),
+      );
+
+      setMenuPosition({ left, top });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, countries.length, isLoading, isError]);
+
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-    const body = document.body;
-    const root = document.documentElement;
-    const previousBodyOverflow = body.style.overflow;
-    const previousRootOverflow = root.style.overflow;
-    const previousBodyOverscroll = body.style.overscrollBehavior;
-    const previousRootOverscroll = root.style.overscrollBehavior;
-    body.style.overflow = "hidden";
-    root.style.overflow = "hidden";
-    body.style.overscrollBehavior = "none";
-    root.style.overscrollBehavior = "none";
     const focusFrame = window.requestAnimationFrame(() => dialogRef.current?.focus());
     return () => {
       window.cancelAnimationFrame(focusFrame);
-      body.style.overflow = previousBodyOverflow;
-      root.style.overflow = previousRootOverflow;
-      body.style.overscrollBehavior = previousBodyOverscroll;
-      root.style.overscrollBehavior = previousRootOverscroll;
       previouslyFocused?.focus();
     };
   }, [open]);
@@ -174,8 +115,9 @@ export function CountrySelector({ open, onClose, onSelect, selectedCountryCode }
         <section
           ref={dialogRef}
           className="auth-picker-panel"
+          style={{ left: menuPosition.left, top: menuPosition.top }}
           role="dialog"
-          aria-modal="true"
+          aria-modal="false"
           aria-label="Sélection du pays"
           tabIndex={-1}
           onKeyDown={handleDialogKeyDown}
@@ -212,17 +154,12 @@ export function CountrySelector({ open, onClose, onSelect, selectedCountryCode }
                         onClose();
                       }}
                       aria-pressed={selected}
+                      aria-label={`${country.name} (+${country.phonePrefix})`}
                       data-country-code={country.code}
                       data-testid={`country-option-${country.code}`}
                     >
-                      <CountryFlag countryCode={country.code} />
-                      <span className="auth-picker-name">{country.name}</span>
-                      <span className="auth-picker-prefix">+{country.phonePrefix}</span>
-                      {selected && (
-                        <span className="auth-picker-check" aria-hidden="true">
-                          <Check />
-                        </span>
-                      )}
+                      <span className="auth-picker-name">{country.code}</span>
+                      <span className="auth-picker-prefix">(+{country.phonePrefix})</span>
                     </button>
                   );
                 })

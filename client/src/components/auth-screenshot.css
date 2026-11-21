@@ -546,8 +546,10 @@
   }
 }
 
-/* Compact country list portal matches the dropdown shown in the reference. */
+/* Compact white country dropdown shown in the supplied reference. */
 .auth-picker-portal.auth-redesign.auth-screenshot {
+  position: fixed;
+  inset: 0;
   z-index: 9999;
   width: 100%;
   height: 100dvh;
@@ -558,31 +560,33 @@
 }
 
 .auth-screenshot .auth-picker-overlay {
+  position: fixed;
   z-index: 130;
-  align-items: center;
-  justify-content: center;
-  padding: 16px 20px;
-  background: rgba(1, 4, 11, 0.76);
-  backdrop-filter: blur(2px);
+  inset: 0;
+  display: block;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
   pointer-events: auto;
 }
 
 .auth-screenshot .auth-picker-panel {
   display: flex;
-  width: min(84vw, 360px);
+  position: fixed;
+  width: 116px;
   height: auto;
   min-height: 0;
-  max-height: calc(100dvh - 32px);
-  flex: 0 1 auto;
+  max-height: min(78dvh, 480px);
+  flex: none;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid #28364f;
-  border-radius: 10px;
-  padding: 8px;
-  background: #111a2d;
-  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
-  color: #f3f5fa;
-  transform: rotate(-1deg);
+  border: 1px solid #dedede;
+  border-radius: 5px;
+  padding: 0;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
+  color: #363636;
+  transform: none;
 }
 
 .auth-screenshot .auth-picker-wheel {
@@ -590,8 +594,8 @@
   display: flex;
   width: 100%;
   min-height: 0;
-  max-height: min(70dvh, 420px);
-  flex: 0 1 auto;
+  max-height: min(78dvh, 480px);
+  flex: 1 1 auto;
   margin: 0;
 }
 
@@ -600,15 +604,15 @@
 }
 
 .auth-screenshot .auth-picker-list {
-  position: static;
+  position: relative;
   inset: auto;
   display: flex;
   width: 100%;
   min-height: 0;
-  max-height: min(70dvh, 420px);
+  max-height: min(78dvh, 480px);
   flex: 0 1 auto;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -616,6 +620,7 @@
   scroll-snap-type: none;
   scroll-behavior: auto;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .auth-screenshot .auth-picker-list::-webkit-scrollbar {
@@ -625,35 +630,37 @@
 .auth-screenshot .auth-picker-row {
   position: relative;
   display: flex;
+  width: 100%;
+  min-width: 0;
   justify-content: flex-start;
-  gap: 10px;
-  min-height: 50px;
-  height: 50px;
-  flex: 0 0 50px;
-  border: 1px solid rgba(141, 157, 183, 0.12);
-  border-radius: 8px;
+  gap: 4px;
+  min-height: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid #f2f2f2;
   padding: 0 12px;
-  background: #1d293d;
-  color: #c3cbd8;
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 500;
+  background: #fff;
+  color: #3a3a3a;
+  font-family: Roboto, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
   line-height: 1.2;
   text-align: left;
   opacity: 1;
   transform: none;
-  transition: background-color 140ms ease, border-color 140ms ease;
+  transition: background-color 120ms ease;
 }
 
 .auth-screenshot .auth-picker-row:hover {
-  background: #26344b;
+  background: #f7f7f7;
 }
 
 .auth-screenshot .auth-picker-row.is-selected {
-  border-color: #ff8a21;
-  background: #f47719;
-  color: #fff;
-  font-weight: 700;
+  background: #f4f8f5;
+  color: #262626;
+  font-weight: 500;
   opacity: 1;
   transform: none;
 }
@@ -724,35 +731,35 @@
 }
 
 .auth-screenshot .auth-picker-name {
-  flex: 1;
+  flex: 0 0 auto;
   font-family: inherit;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: inherit;
   text-align: left;
 }
 
 .auth-screenshot .auth-picker-prefix,
 .auth-screenshot .auth-picker-row.is-selected .auth-picker-prefix {
-  margin-left: auto;
+  flex: 0 0 auto;
   color: inherit;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .auth-screenshot .auth-picker-empty,
 .auth-screenshot .auth-picker-error {
-  min-height: 180px;
+  min-height: 96px;
   flex: 1;
-  color: #c3cbd8;
+  color: #555;
   font-family: inherit;
 }
 
 .auth-screenshot .auth-picker-error button {
-  border-color: #ff9a2e;
-  border-radius: 999px;
-  padding: 8px 15px;
-  background: #f47719;
-  color: #fff;
+  border-color: #ddd;
+  border-radius: 4px;
+  padding: 8px 12px;
+  background: #f7f7f7;
+  color: #333;
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -762,12 +769,6 @@
 .auth-screenshot .auth-picker-row:focus-visible {
   outline: 2px solid #ffad2f;
   outline-offset: 2px;
-}
-
-@media (max-width: 600px) {
-  .auth-screenshot .auth-picker-overlay {
-    padding: 16px 20px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
