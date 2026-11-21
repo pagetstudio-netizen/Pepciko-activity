@@ -13,7 +13,7 @@ interface CountrySelectorProps {
 
 export function CountrySelector({ open, onClose, onSelect, selectedCountryCode }: CountrySelectorProps) {
   const dialogRef = useRef<HTMLElement | null>(null);
-  const [menuPosition, setMenuPosition] = useState({ left: 20, top: 140 });
+  const [menuPosition, setMenuPosition] = useState({ left: 20, top: 140, maxHeight: 360 });
   const { data: apiCountries, isLoading, isError, refetch } = useQuery<ApiCountry[]>({
     queryKey: ["/api/countries"],
     enabled: open,
@@ -44,17 +44,15 @@ export function CountrySelector({ open, onClose, onSelect, selectedCountryCode }
       const rect = trigger.getBoundingClientRect();
       const menuWidth = 116;
       const rowHeight = 48;
-      const maxHeight = Math.min(window.innerHeight * 0.78, 480);
+      const availableBelow = Math.max(48, window.innerHeight - rect.bottom - 8);
+      const maxHeight = Math.min(window.innerHeight * 0.78, 480, availableBelow);
       const contentHeight = isLoading || isError
-        ? 96
+        ? Math.min(96, maxHeight)
         : Math.min(Math.max(countries.length * rowHeight, rowHeight), maxHeight);
       const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8));
-      const top = Math.max(
-        8,
-        Math.min(rect.bottom - contentHeight, window.innerHeight - contentHeight - 8),
-      );
+      const top = Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - contentHeight - 8));
 
-      setMenuPosition({ left, top });
+      setMenuPosition({ left, top, maxHeight });
     };
 
     updatePosition();
@@ -115,7 +113,11 @@ export function CountrySelector({ open, onClose, onSelect, selectedCountryCode }
         <section
           ref={dialogRef}
           className="auth-picker-panel"
-          style={{ left: menuPosition.left, top: menuPosition.top }}
+          style={{
+            left: menuPosition.left,
+            top: menuPosition.top,
+            maxHeight: menuPosition.maxHeight,
+          }}
           role="dialog"
           aria-modal="false"
           aria-label="Sélection du pays"
