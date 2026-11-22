@@ -50,7 +50,7 @@ Plesk fournit `PORT`. Ne pas copier les Secrets Replit automatiquement : saisir 
 ### Selon les fonctions activées
 
 - URL publique et callbacks : après activation du certificat SSL, définir `PUBLIC_APP_URL=https://geenergy.top` (ne pas utiliser l’URL HTTP fournie pour les paiements).
-- Telegram : `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+- Telegram : `TELEGRAM_BOT_TOKEN` et `RAMCHAT_ID` (le nom historique `TELEGRAM_CHAT_ID` reste accepté en secours). Les signalements, alertes et notifications sont envoyés dans ce même groupe.
 - PPayPros : ajouter le triplet de chaque pays utilisé :
 
   | Pays | Numéro marchand | ID d’application | Clé privée |

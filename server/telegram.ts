@@ -1,6 +1,14 @@
 const TELEGRAM_API = "https://api.telegram.org";
 import { storage } from "./storage";
 
+export function resolveTelegramChatId(ramChatId: string | undefined, telegramChatId: string | undefined): string {
+  return ramChatId?.trim() || telegramChatId?.trim() || "";
+}
+
+function getTelegramChatId(): string {
+  return resolveTelegramChatId(process.env.RAMCHAT_ID, process.env.TELEGRAM_CHAT_ID);
+}
+
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -10,12 +18,14 @@ function escapeHtml(value: unknown): string {
 }
 
 export function isTelegramConfigured(): boolean {
-  return Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
+  return Boolean(process.env.TELEGRAM_BOT_TOKEN && getTelegramChatId());
 }
 
 async function sendTelegramMessageToChat(message: string, chatId: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return;
+  if (!token || !chatId.trim()) {
+    throw new Error("Le bot Telegram ou l’identifiant du groupe n’est pas configuré");
+  }
 
   const response = await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
     method: "POST",
@@ -35,8 +45,10 @@ async function sendTelegramMessageToChat(message: string, chatId: string): Promi
 }
 
 export async function sendTelegramMessage(message: string): Promise<void> {
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!chatId) return;
+  const chatId = getTelegramChatId();
+  if (!isTelegramConfigured()) {
+    throw new Error("Le bot Telegram ou l’identifiant du groupe n’est pas configuré");
+  }
   await sendTelegramMessageToChat(message, chatId);
 }
 
@@ -94,7 +106,7 @@ async function sendTelegramReportPhotos(
   photos: DepositSupportReportImage[],
 ): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const chatId = getTelegramChatId();
   if (!token || !chatId) throw new Error("Telegram n'est pas configuré");
 
   const method = photos.length === 1 ? "sendPhoto" : "sendMediaGroup";
@@ -200,7 +212,7 @@ export function buildRobotPayErrorNotification(data: RobotPayErrorNotification):
 }
 
 export async function sendTelegramPaymentError(data: RobotPayErrorNotification): Promise<void> {
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const chatId = getTelegramChatId();
   if (!process.env.TELEGRAM_BOT_TOKEN || !chatId) {
     throw new Error("Le bot Telegram ou le groupe Telegram n'est pas configuré");
   }
@@ -398,7 +410,7 @@ export function startTelegramBot(): void {
       for (const update of response?.result || []) {
         updateOffset = Math.max(updateOffset, Number(update.update_id) + 1);
         const message = update.message;
-        if (!message?.text || String(message.chat?.id) !== String(process.env.TELEGRAM_CHAT_ID)) continue;
+        if (!message?.text || String(message.chat?.id) !== getTelegramChatId()) continue;
         const reply = await handleTelegramCommand(message.text, String(message.chat.id));
         const adminBaseUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "")
           || (process.env.REPLIT_DEV_DOMAIN?.trim()
