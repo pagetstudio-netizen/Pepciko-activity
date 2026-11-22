@@ -117,8 +117,39 @@
 
 .transaction-history-page__type-wrap {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 5px;
+}
+
+.transaction-history-page__status {
+  display: inline-flex;
+  min-height: 24px;
+  min-width: 0;
+  align-items: center;
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.transaction-history-page__status--approved {
+  color: #2b7b3e;
+  background: #eaf6ed;
+}
+
+.transaction-history-page__status--pending,
+.transaction-history-page__status--processing {
+  color: #90610c;
+  background: #fff4dd;
+}
+
+.transaction-history-page__status--rejected {
+  color: #b42f42;
+  background: #fdecef;
 }
 
 .transaction-history-page__type {

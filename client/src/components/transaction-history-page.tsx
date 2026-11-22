@@ -19,10 +19,13 @@ interface TransactionRecord {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  approved: "Succès",
+  approved: "Paiement réussi",
   pending: "En attente",
   processing: "En traitement",
-  rejected: "Rejeté",
+  rejected: "Paiement refusé",
+  failed: "Paiement refusé",
+  canceled: "Paiement annulé",
+  cancelled: "Paiement annulé",
 };
 
 function formatNumber(value: number | string | null | undefined) {
@@ -47,9 +50,8 @@ function formatDate(value: string) {
 }
 
 function statusClassFor(status: string) {
-  return ["approved", "pending", "processing", "rejected"].includes(status)
-    ? status
-    : "pending";
+  if (status === "failed" || status === "canceled" || status === "cancelled") return "rejected";
+  return ["approved", "pending", "processing", "rejected"].includes(status) ? status : "pending";
 }
 
 export default function TransactionHistoryPage({ kind }: { kind: HistoryKind }) {
@@ -130,7 +132,7 @@ export default function TransactionHistoryPage({ kind }: { kind: HistoryKind }) 
             {transactions.map((transaction) => {
               const status = transaction.status.toLowerCase();
               const statusClass = statusClassFor(status);
-              const statusLabel = STATUS_LABELS[status] ?? transaction.status;
+              const statusLabel = STATUS_LABELS[status] ?? "Statut inconnu";
               const transactionType = isDeposit ? "Dépôt" : "Retrait";
               const rows = [
                 {
@@ -167,6 +169,12 @@ export default function TransactionHistoryPage({ kind }: { kind: HistoryKind }) 
                   data-testid={`${kind}-history-item-${transaction.id}`}
                 >
                   <div className="transaction-history-page__type-wrap">
+                    <span
+                      className={`transaction-history-page__status transaction-history-page__status--${statusClass}`}
+                      aria-label={`Statut du paiement : ${statusLabel}`}
+                    >
+                      {statusLabel}
+                    </span>
                     <span
                       className={`transaction-history-page__type transaction-history-page__type--${statusClass}`}
                       aria-label={`${transactionType} — ${statusLabel}`}

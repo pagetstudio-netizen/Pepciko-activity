@@ -1,10 +1,10 @@
 import { 
-  users, products, userProducts, deposits, withdrawals, withdrawalWallets,
+  users, products, userProducts, deposits, withdrawals, withdrawalWallets, withdrawalWalletAudit,
   paymentChannels, paymentNumbers, stakingProducts, userStakings, referralCommissions, tasks, userTasks, transactions, platformSettings, adminAuditLog,
   giftCodes, giftCodeClaims, countries, blogPosts, userSecurity,
   type User, type Product, type UserProduct, type Deposit, type Withdrawal, type WithdrawalWallet,
   type PaymentChannel, type PaymentNumber, type StakingProduct, type UserStaking, type ReferralCommission, type Task, type UserTask, type Transaction, type PlatformSetting,
-  type GiftCode, type GiftCodeClaim, type Country, type BlogPost
+  type GiftCode, type GiftCodeClaim, type Country, type BlogPost, type WithdrawalWalletAudit
 } from "@shared/schema";
 import { db } from "./db";
 import { calculateNetAdminBalanceCredit } from "./admin-balance-credit";
@@ -54,6 +54,11 @@ import {
 } from "@shared/vip-levels";
 import { eq, and, asc, desc, sql, gte, lte, or, isNull, inArray, lt, ne } from "drizzle-orm";
 import { hashPassword } from "./password-utils";
+import {
+  areWithdrawalWalletDetailsEqual,
+  createWithdrawalWalletAuditRecord,
+  type WithdrawalWalletAuditActor,
+} from "./withdrawal-wallet-audit";
 import {
   BLOG_SUCCESSFUL_WITHDRAWAL_STATUS,
   countsAsBlogSubmission,
@@ -275,10 +280,13 @@ export interface IStorage {
   
   // Wallets
   getWallets(userId: number): Promise<WithdrawalWallet[]>;
-  createWallet(data: Partial<WithdrawalWallet>): Promise<WithdrawalWallet>;
-  deleteWallet(userId: number, id: number): Promise<boolean>;
-  setDefaultWallet(userId: number, walletId: number): Promise<void>;
+  createWallet(data: Partial<WithdrawalWallet>, actor: WithdrawalWalletAuditActor): Promise<WithdrawalWallet>;
+  deleteWallet(userId: number, id: number, actor: WithdrawalWalletAuditActor): Promise<boolean>;
+  setDefaultWallet(userId: number, walletId: number, actor: WithdrawalWalletAuditActor): Promise<void>;
   getDefaultWallet(userId: number): Promise<WithdrawalWallet | undefined>;
+  getWithdrawalWalletAuditHistory(
+    userId: number,
+  ): Promise<Array<WithdrawalWalletAudit & { actorName: string | null }>>;
   
   // Payment Channels
   getPaymentChannels(): Promise<PaymentChannel[]>;
@@ -2076,58 +2084,104 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(withdrawalWallets).where(eq(withdrawalWallets.userId, userId));
   }
 
-  async createWallet(data: Partial<WithdrawalWallet>): Promise<WithdrawalWallet> {
+  async createWallet(
+    data: Partial<WithdrawalWallet>,
+    actor: WithdrawalWalletAuditActor,
+  ): Promise<WithdrawalWallet> {
     const userId = data.userId!;
-    const existingWallets = await this.getWallets(userId);
-    const existing = existingWallets.find((wallet) => wallet.isDefault) ?? existingWallets[0];
+    return db.transaction(async (tx) => {
+      const existingWallets = await tx.select().from(withdrawalWallets)
+        .where(eq(withdrawalWallets.userId, userId));
+      const existing = existingWallets.find((wallet) => wallet.isDefault) ?? existingWallets[0];
 
-    if (existing) {
-      const [wallet] = await db.update(withdrawalWallets)
-        .set({
+      if (existing) {
+        const nextDetails = {
           accountName: data.accountName!,
           accountNumber: data.accountNumber!,
           paymentMethod: data.paymentMethod!,
           country: data.country!,
-          isDefault: true,
-        })
-        .where(and(
-          eq(withdrawalWallets.id, existing.id),
-          eq(withdrawalWallets.userId, userId),
-        ))
+        };
+        const [wallet] = await tx.update(withdrawalWallets)
+          .set({ ...nextDetails, isDefault: true })
+          .where(and(
+            eq(withdrawalWallets.id, existing.id),
+            eq(withdrawalWallets.userId, userId),
+          ))
+          .returning();
+
+        if (!wallet) throw new Error("Compte de retrait introuvable");
+
+        await tx.update(withdrawalWallets)
+          .set({ isDefault: false })
+          .where(and(
+            eq(withdrawalWallets.userId, userId),
+            ne(withdrawalWallets.id, existing.id),
+          ));
+
+        if (!areWithdrawalWalletDetailsEqual(existing, wallet)) {
+          await tx.insert(withdrawalWalletAudit).values(createWithdrawalWalletAuditRecord({
+            targetUserId: userId,
+            walletId: wallet.id,
+            actor,
+            action: "updated",
+            before: existing,
+            after: wallet,
+          }));
+        }
+        return wallet;
+      }
+
+      const [wallet] = await tx.insert(withdrawalWallets)
+        .values({ ...data, isDefault: true } as any)
         .returning();
-
-      if (!wallet) throw new Error("Compte de retrait introuvable");
-
-      await db.update(withdrawalWallets)
-        .set({ isDefault: false })
-        .where(and(
-          eq(withdrawalWallets.userId, userId),
-          ne(withdrawalWallets.id, existing.id),
-        ));
-
+      await tx.insert(withdrawalWalletAudit).values(createWithdrawalWalletAuditRecord({
+        targetUserId: userId,
+        walletId: wallet.id,
+        actor,
+        action: "created",
+        after: wallet,
+      }));
       return wallet;
-    }
-
-    const [wallet] = await db.insert(withdrawalWallets)
-      .values({ ...data, isDefault: true } as any)
-      .returning();
-    return wallet;
+    });
   }
 
-  async deleteWallet(userId: number, id: number): Promise<boolean> {
-    const deleted = await db.delete(withdrawalWallets)
-      .where(and(eq(withdrawalWallets.id, id), eq(withdrawalWallets.userId, userId)))
-      .returning({ id: withdrawalWallets.id });
-    return deleted.length > 0;
-  }
-
-  async setDefaultWallet(userId: number, walletId: number): Promise<void> {
-    await db.transaction(async (tx) => {
-      const [wallet] = await tx.select({ id: withdrawalWallets.id })
-        .from(withdrawalWallets)
-        .where(and(eq(withdrawalWallets.id, walletId), eq(withdrawalWallets.userId, userId)))
+  async deleteWallet(
+    userId: number,
+    id: number,
+    actor: WithdrawalWalletAuditActor,
+  ): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      const [wallet] = await tx.select().from(withdrawalWallets)
+        .where(and(eq(withdrawalWallets.id, id), eq(withdrawalWallets.userId, userId)))
         .limit(1);
+      if (!wallet) return false;
+
+      await tx.insert(withdrawalWalletAudit).values(createWithdrawalWalletAuditRecord({
+        targetUserId: userId,
+        walletId: wallet.id,
+        actor,
+        action: "deleted",
+        before: wallet,
+      }));
+      const deleted = await tx.delete(withdrawalWallets)
+        .where(and(eq(withdrawalWallets.id, id), eq(withdrawalWallets.userId, userId)))
+        .returning({ id: withdrawalWallets.id });
+      return deleted.length > 0;
+    });
+  }
+
+  async setDefaultWallet(
+    userId: number,
+    walletId: number,
+    actor: WithdrawalWalletAuditActor,
+  ): Promise<void> {
+    await db.transaction(async (tx) => {
+      const wallets = await tx.select().from(withdrawalWallets)
+        .where(eq(withdrawalWallets.userId, userId));
+      const wallet = wallets.find((candidate) => candidate.id === walletId);
+      const previousDefault = wallets.find((candidate) => candidate.isDefault);
       if (!wallet) throw new Error("Compte de retrait introuvable.");
+      if (previousDefault?.id === wallet.id) return;
 
       await tx.update(withdrawalWallets)
         .set({ isDefault: false })
@@ -2135,7 +2189,30 @@ export class DatabaseStorage implements IStorage {
       await tx.update(withdrawalWallets)
         .set({ isDefault: true })
         .where(and(eq(withdrawalWallets.id, walletId), eq(withdrawalWallets.userId, userId)));
+      await tx.insert(withdrawalWalletAudit).values(createWithdrawalWalletAuditRecord({
+        targetUserId: userId,
+        walletId: wallet.id,
+        actor,
+        action: "default_changed",
+        before: previousDefault ?? null,
+        after: wallet,
+      }));
     });
+  }
+
+  async getWithdrawalWalletAuditHistory(
+    userId: number,
+  ): Promise<Array<WithdrawalWalletAudit & { actorName: string | null }>> {
+    const rows = await db.select({
+      audit: withdrawalWalletAudit,
+      actorName: users.fullName,
+    })
+      .from(withdrawalWalletAudit)
+      .leftJoin(users, eq(withdrawalWalletAudit.actorUserId, users.id))
+      .where(eq(withdrawalWalletAudit.userId, userId))
+      .orderBy(desc(withdrawalWalletAudit.createdAt))
+      .limit(50);
+    return rows.map((row) => ({ ...row.audit, actorName: row.actorName }));
   }
 
   async getDefaultWallet(userId: number): Promise<WithdrawalWallet | undefined> {

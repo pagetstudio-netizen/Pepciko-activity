@@ -3841,6 +3841,9 @@ export async function registerRoutes(
       const wallet = await storage.createWallet({
         userId: req.session.userId!,
         ...parsedWallet.data,
+      }, {
+        userId: req.session.userId!,
+        role: "user",
       });
       res.json(wallet);
     } catch (error: any) {
@@ -3854,7 +3857,10 @@ export async function registerRoutes(
       if (!Number.isSafeInteger(walletId) || walletId <= 0) {
         return res.status(400).json({ message: "Compte de retrait invalide." });
       }
-      const deleted = await storage.deleteWallet(req.session.userId!, walletId);
+      const deleted = await storage.deleteWallet(req.session.userId!, walletId, {
+        userId: req.session.userId!,
+        role: "user",
+      });
       if (!deleted) return res.status(404).json({ message: "Compte de retrait introuvable." });
       res.json({ success: true });
     } catch (error: any) {
@@ -3864,7 +3870,10 @@ export async function registerRoutes(
 
   app.patch("/api/wallets/:id/default", requireAuth, async (req, res) => {
     try {
-      await storage.setDefaultWallet(req.session.userId!, parseInt(getRouteParam(req.params.id)));
+      await storage.setDefaultWallet(req.session.userId!, parseInt(getRouteParam(req.params.id)), {
+        userId: req.session.userId!,
+        role: "user",
+      });
       res.json({ success: true });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -4909,6 +4918,20 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/admin/users/:id/withdrawal-wallet/history", requireAdmin, async (req, res) => {
+    try {
+      const userId = Number(getRouteParam(req.params.id));
+      if (!Number.isSafeInteger(userId) || userId <= 0) {
+        return res.status(400).json({ message: "Utilisateur invalide" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
+      return res.json(await storage.getWithdrawalWalletAuditHistory(userId));
+    } catch (error: any) {
+      return res.status(500).json({ message: error.message || "Impossible de charger l’historique du compte de retrait" });
+    }
+  });
+
   app.put("/api/admin/users/:id/withdrawal-wallet", requireAdmin, async (req, res) => {
     try {
       const userId = Number(getRouteParam(req.params.id));
@@ -4951,7 +4974,10 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Le moyen de paiement n'est pas configuré pour ce pays." });
       }
 
-      const wallet = await storage.createWallet({ userId, ...data });
+      const wallet = await storage.createWallet({ userId, ...data }, {
+        userId: req.session.userId!,
+        role: "admin",
+      });
       await storage.logAdminAction(
         req.session.userId!,
         "update_withdrawal_wallet",

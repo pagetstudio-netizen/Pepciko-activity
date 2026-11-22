@@ -70,6 +70,26 @@ export const withdrawalWallets = pgTable("withdrawal_wallets", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const withdrawalWalletAudit = pgTable("withdrawal_wallet_audit", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  walletId: integer("wallet_id"),
+  actorUserId: integer("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+  actorRole: text("actor_role").$type<"user" | "admin">().notNull(),
+  action: text("action").$type<"created" | "updated" | "deleted" | "default_changed">().notNull(),
+  oldAccountName: text("old_account_name"),
+  oldAccountNumber: text("old_account_number"),
+  oldPaymentMethod: text("old_payment_method"),
+  oldCountry: text("old_country"),
+  newAccountName: text("new_account_name"),
+  newAccountNumber: text("new_account_number"),
+  newPaymentMethod: text("new_payment_method"),
+  newCountry: text("new_country"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("withdrawal_wallet_audit_user_created_idx").on(table.userId, table.createdAt),
+]);
+
 // Products table
 export const products = pgTable("products", {
   id: serial("id").primaryKey(),
@@ -463,6 +483,7 @@ export type UserProduct = typeof userProducts.$inferSelect;
 export type Deposit = typeof deposits.$inferSelect;
 export type Withdrawal = typeof withdrawals.$inferSelect;
 export type WithdrawalWallet = typeof withdrawalWallets.$inferSelect;
+export type WithdrawalWalletAudit = typeof withdrawalWalletAudit.$inferSelect;
 export type PaymentChannel = typeof paymentChannels.$inferSelect;
 export type ReferralCommission = typeof referralCommissions.$inferSelect;
 export type Task = typeof tasks.$inferSelect;

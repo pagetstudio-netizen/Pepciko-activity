@@ -310,6 +310,7 @@ export default function WalletPage() {
               <p><span>1.</span> Vous ne pouvez enregistrer qu’un seul compte de retrait.</p>
               <p><span>2.</span> Le numéro doit correspondre au compte de l’opérateur sélectionné.</p>
               <p><span>3.</span> Vérifiez le nom du titulaire et le numéro avant d’enregistrer.</p>
+              <p><span>4.</span> Pour sécuriser les retraits, les créations et modifications de ce compte sont consignées à des fins d’audit.</p>
             </section>
           </form>
         </div>

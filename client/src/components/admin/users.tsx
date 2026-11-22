@@ -14,7 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/countries";
 import { Search, Edit, Ban, Shield, Lock, Unlock, Star, Users, Loader2, UserPlus, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight, Landmark } from "lucide-react";
 import { walletSchema } from "@shared/schema";
-import type { Country, User, Product, WithdrawalWallet } from "@shared/schema";
+import type { Country, User, Product, WithdrawalWallet, WithdrawalWalletAudit } from "@shared/schema";
 import { ADMIN_PATH } from "@/lib/admin-path";
 import EmptyState from "@/components/empty-state";
 import { parseOperators } from "@/lib/countries";
@@ -64,6 +64,7 @@ interface DetailedTeam {
 }
 
 type AdminWalletForm = Pick<WithdrawalWallet, "accountName" | "accountNumber" | "paymentMethod" | "country">;
+type AdminWalletAuditEntry = WithdrawalWalletAudit & { actorName: string | null };
 
 function TeamMemberCard({ member }: { member: TeamMember; level: number }) {
   return (
@@ -211,6 +212,19 @@ export default function AdminUsers({ isSuperAdmin }: AdminUsersProps) {
     enabled: !!selectedUser?.id,
   });
 
+  const adminWalletHistoryQuery = useQuery<AdminWalletAuditEntry[]>({
+    queryKey: ["/api/admin/users", selectedUser?.id, "withdrawal-wallet-history"],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/admin/users/${selectedUser!.id}/withdrawal-wallet/history`,
+        { credentials: "include" },
+      );
+      if (!response.ok) throw new Error("Impossible de charger l’historique du portefeuille");
+      return response.json();
+    },
+    enabled: !!selectedUser?.id,
+  });
+
   useEffect(() => {
     if (!selectedUser || !adminWalletQuery.isSuccess) return;
     setAdminWalletForm({
@@ -244,6 +258,7 @@ export default function AdminUsers({ isSuperAdmin }: AdminUsersProps) {
     },
     onSuccess: (_wallet, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users", variables.userId, "withdrawal-wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users", variables.userId, "withdrawal-wallet-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       toast({ title: "Compte de retrait mis à jour" });
     },
@@ -793,6 +808,74 @@ export default function AdminUsers({ isSuperAdmin }: AdminUsersProps) {
                         : "Enregistrer le compte de retrait"}
                     </Button>
                   </>
+                )}
+              </div>
+
+              <div className="space-y-3 rounded-lg border p-3" data-testid="admin-withdrawal-wallet-history">
+                <div>
+                  <p className="text-sm font-medium">Historique du compte de retrait</p>
+                  <p className="text-xs text-muted-foreground">
+                    Journal interne : changements effectués depuis l’activation de cette fonction.
+                  </p>
+                </div>
+                {adminWalletHistoryQuery.isLoading ? (
+                  <div className="flex justify-center py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                ) : adminWalletHistoryQuery.isError ? (
+                  <p className="text-xs text-destructive">Impossible de charger l’historique.</p>
+                ) : adminWalletHistoryQuery.data?.length ? (
+                  <div className="max-h-64 space-y-3 overflow-y-auto">
+                    {adminWalletHistoryQuery.data.map((entry) => {
+                      const actionLabel = {
+                        created: "Compte enregistré",
+                        updated: "Compte modifié",
+                        deleted: "Compte supprimé",
+                        default_changed: "Compte de retrait sélectionné",
+                      }[entry.action];
+                      const formatAccount = (
+                        name: string | null,
+                        number: string | null,
+                        method: string | null,
+                        country: string | null,
+                      ) => [name, number, method, country].filter(Boolean).join(" · ") || "—";
+                      return (
+                        <div key={entry.id} className="border-t pt-2 text-xs first:border-0 first:pt-0">
+                          <p className="font-medium">
+                            {actionLabel} par {entry.actorRole === "admin" ? "l’administration" : "l’utilisateur"}
+                            {entry.actorName ? ` (${entry.actorName})` : ""}
+                          </p>
+                          <p className="text-muted-foreground">
+                            {new Date(entry.createdAt).toLocaleString("fr-FR")}
+                          </p>
+                          {entry.oldAccountNumber && (
+                            <p className="mt-1 break-words">
+                              Avant : {formatAccount(
+                                entry.oldAccountName,
+                                entry.oldAccountNumber,
+                                entry.oldPaymentMethod,
+                                entry.oldCountry,
+                              )}
+                            </p>
+                          )}
+                          {entry.newAccountNumber && (
+                            <p className="break-words">
+                              Après : {formatAccount(
+                                entry.newAccountName,
+                                entry.newAccountNumber,
+                                entry.newPaymentMethod,
+                                entry.newCountry,
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Aucun changement enregistré depuis l’activation du journal. Les changements antérieurs ne peuvent pas être reconstitués.
+                  </p>
                 )}
               </div>
 
