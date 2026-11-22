@@ -27,7 +27,6 @@ const CHECKOUT_COPY = {
     noOperators: "Aucun opérateur disponible pour ce pays.",
     operatorFallback: "Opérateur",
     manualPayment: "Paiement manuel",
-    automaticPayment: "Paiement automatique",
     phoneLabel: "Compte de paiement réel",
     phonePlaceholder: "Veuillez saisir votre compte de paiement réel",
     beneficiary: "Bénéficiaire",
@@ -74,7 +73,6 @@ const CHECKOUT_COPY = {
     noOperators: "No payment method is available for this country.",
     operatorFallback: "Payment method",
     manualPayment: "Manual payment",
-    automaticPayment: "Automatic payment",
     phoneLabel: "Real payment account",
     phonePlaceholder: "Enter your real payment account",
     beneficiary: "Recipient",
@@ -634,9 +632,6 @@ export default function RobotPayPage() {
                           </span>
                         )}
                         <span className="text-xs font-semibold text-[#555]">{label}</span>
-                        <span className="text-[10px] text-[#8a8a8a]">
-                          {op.manualNumber ? copy.manualPayment : copy.automaticPayment}
-                        </span>
                       </button>
                     );
                   })}

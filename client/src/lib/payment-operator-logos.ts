@@ -1,4 +1,5 @@
 const OPERATOR_LOGOS: Array<{ matches: string[]; src: string }> = [
+  { matches: ["togocel"], src: "/operators/togocel.png" },
   { matches: ["tmoney", "tmixx", "mixx"], src: "/operators/mixx-tg.png" },
   { matches: ["moov"], src: "/operators/moov-africa.png" },
   { matches: ["mtn"], src: "/operators/mtn-mobile-money.png" },
