@@ -3966,41 +3966,51 @@ export async function registerRoutes(
     const userId = req.session.userId!;
     const imageKeys = files.map(() => `blog/${userId}/${randomUUID()}.webp`);
     try {
-      const draft = await storage.createBlogPostDraft(userId, parsed.data.content, imageKeys);
-      await deleteBlogImages(draft.staleImageKeys);
-
-      if (draft.status === "withdrawal_required") {
+      const eligibility = await storage.getBlogPostingEligibility(userId);
+      if (!eligibility.userFound) {
+        return res.status(404).json({ message: "Compte introuvable." });
+      }
+      if (!eligibility.hasSuccessfulWithdrawal) {
         return res.status(403).json({ message: BLOG_WITHDRAWAL_REQUIRED_MESSAGE });
       }
-      if (draft.status === "daily_limit") {
+      if (eligibility.submittedToday) {
         return res.status(409).json({ message: BLOG_DAILY_LIMIT_MESSAGE });
       }
-      if (draft.status === "user_not_found") {
+
+      const uploads = await Promise.allSettled(
+        files.map((file, index) => uploadBlogImage(imageKeys[index], file.buffer)),
+      );
+      const failedUpload = uploads.find((result) => result.status === "rejected");
+      if (failedUpload?.status === "rejected") {
+        throw failedUpload.reason;
+      }
+
+      const submission = await storage.submitBlogPost(userId, parsed.data.content, imageKeys);
+      if (submission.status !== "created") {
+        await deleteBlogImages(imageKeys);
+        if (submission.status === "withdrawal_required") {
+          return res.status(403).json({ message: BLOG_WITHDRAWAL_REQUIRED_MESSAGE });
+        }
+        if (submission.status === "daily_limit") {
+          return res.status(409).json({ message: BLOG_DAILY_LIMIT_MESSAGE });
+        }
         return res.status(404).json({ message: "Compte introuvable." });
       }
 
-      try {
-        await Promise.all(files.map((file, index) => uploadBlogImage(imageKeys[index], file.buffer)));
-        const post = await storage.publishBlogPostDraft(userId, draft.post.id);
-        return res.status(201).json({
-          id: post.id,
-          content: post.content,
-          createdAt: post.createdAt,
-          images: post.imageKeys.map((_, index) => `/api/blog/posts/${post.id}/images/${index}`),
-        });
-      } catch (error) {
-        await deleteBlogImages(imageKeys);
-        await storage.deleteBlogPostDraft(userId, draft.post.id);
-        if (error instanceof BlogImageValidationError) {
-          return res.status(400).json({ message: error.message });
-        }
-        if (error instanceof BlogImageStorageError) {
-          return res.status(503).json({ message: error.message });
-        }
-        console.error("[blog] Publication could not be completed.");
-        return res.status(500).json({ message: "La publication n’a pas pu être envoyée." });
-      }
+      return res.status(201).json({
+        id: submission.post.id,
+        content: submission.post.content,
+        createdAt: submission.post.createdAt,
+        images: submission.post.imageKeys.map((_, index) => `/api/blog/posts/${submission.post.id}/images/${index}`),
+      });
     } catch (error: any) {
+      await deleteBlogImages(imageKeys);
+      if (error instanceof BlogImageValidationError) {
+        return res.status(400).json({ message: error.message });
+      }
+      if (error instanceof BlogImageStorageError) {
+        return res.status(503).json({ message: error.message });
+      }
       console.error("[blog] Publication reservation failed.");
       res.status(500).json({ message: "La publication n’a pas pu être envoyée." });
     }

@@ -55,8 +55,8 @@ import {
 import { eq, and, asc, desc, sql, gte, lte, or, isNull, inArray, lt, ne } from "drizzle-orm";
 import { hashPassword } from "./password-utils";
 import {
-  BLOG_DRAFT_STALE_MS,
   BLOG_SUCCESSFUL_WITHDRAWAL_STATUS,
+  countsAsBlogSubmission,
   getBlogLocalDayWindow,
 } from "./blog-policy";
 
@@ -100,11 +100,9 @@ function maskBlogAuthorPhone(phone: string): string {
   return `${digits.slice(0, 2)}${"*".repeat(maskedLength)}${digits.slice(-2)}`;
 }
 
-export type BlogPostDraftAttempt =
-  | { status: "created"; post: BlogPost; staleImageKeys: string[] }
-  | { status: "withdrawal_required"; staleImageKeys: string[] }
-  | { status: "daily_limit"; staleImageKeys: string[] }
-  | { status: "user_not_found"; staleImageKeys: string[] };
+export type BlogPostSubmissionAttempt =
+  | { status: "created"; post: BlogPost }
+  | { status: "withdrawal_required" | "daily_limit" | "user_not_found" };
 
 export interface BlogPostingEligibility {
   userFound: boolean;
@@ -302,9 +300,7 @@ export interface IStorage {
   getAdminBlogSubmissions(): Promise<Array<Pick<BlogPost, "id" | "content" | "createdAt" | "imageKeys"> & { authorPhone: string }>>;
   hasSuccessfulWithdrawal(userId: number): Promise<boolean>;
   getBlogPostingEligibility(userId: number, now?: Date): Promise<BlogPostingEligibility>;
-  createBlogPostDraft(userId: number, content: string, imageKeys: string[], now?: Date): Promise<BlogPostDraftAttempt>;
-  publishBlogPostDraft(userId: number, postId: number): Promise<BlogPost>;
-  deleteBlogPostDraft(userId: number, postId: number): Promise<void>;
+  submitBlogPost(userId: number, content: string, imageKeys: string[], now?: Date): Promise<BlogPostSubmissionAttempt>;
   getBlogPostImageKey(postId: number, imageIndex: number, forAdmin?: boolean): Promise<string | undefined>;
   approveBlogPost(postId: number, adminId: number, rewardAmount: number): Promise<BlogApprovalResult>;
   getTasks(): Promise<Task[]>;
@@ -2547,47 +2543,39 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     const { start, end } = getBlogLocalDayWindow(now, user.country);
-    const activeDraftCutoff = new Date(now.getTime() - BLOG_DRAFT_STALE_MS);
-    const [todayPost] = await db.select({ id: blogPosts.id })
+    const todayPosts = await db.select({
+      status: blogPosts.status,
+      isPublished: blogPosts.isPublished,
+    })
       .from(blogPosts)
       .where(and(
         eq(blogPosts.userId, userId),
         gte(blogPosts.createdAt, start),
         lt(blogPosts.createdAt, end),
-        or(eq(blogPosts.isPublished, true), gte(blogPosts.createdAt, activeDraftCutoff)),
       ))
-      .limit(1);
+      .limit(20);
 
     return {
       userFound: true,
       hasSuccessfulWithdrawal: Boolean(withdrawal),
-      submittedToday: Boolean(todayPost),
+      submittedToday: todayPosts.some((post) => countsAsBlogSubmission(post.isPublished, post.status)),
     };
   }
 
-  async createBlogPostDraft(
+  async submitBlogPost(
     userId: number,
     content: string,
     imageKeys: string[],
     now = new Date(),
-  ): Promise<BlogPostDraftAttempt> {
+  ): Promise<BlogPostSubmissionAttempt> {
     return db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(20261105, ${userId})`);
-
-      const staleDrafts = await tx.delete(blogPosts)
-        .where(and(
-          eq(blogPosts.userId, userId),
-          eq(blogPosts.isPublished, false),
-          lt(blogPosts.createdAt, new Date(now.getTime() - BLOG_DRAFT_STALE_MS)),
-        ))
-        .returning({ imageKeys: blogPosts.imageKeys });
-      const staleImageKeys = staleDrafts.flatMap((draft) => draft.imageKeys);
 
       const [user] = await tx.select({ country: users.country })
         .from(users)
         .where(eq(users.id, userId))
         .limit(1);
-      if (!user) return { status: "user_not_found", staleImageKeys };
+      if (!user) return { status: "user_not_found" };
 
       const [withdrawal] = await tx.select({ id: withdrawals.id })
         .from(withdrawals)
@@ -2596,49 +2584,29 @@ export class DatabaseStorage implements IStorage {
           eq(withdrawals.status, BLOG_SUCCESSFUL_WITHDRAWAL_STATUS),
         ))
         .limit(1);
-      if (!withdrawal) return { status: "withdrawal_required", staleImageKeys };
+      if (!withdrawal) return { status: "withdrawal_required" };
 
       const { start, end } = getBlogLocalDayWindow(now, user.country);
-      const activeDraftCutoff = new Date(now.getTime() - BLOG_DRAFT_STALE_MS);
-      const [todayPost] = await tx.select({ id: blogPosts.id })
+      const todayPosts = await tx.select({
+        status: blogPosts.status,
+        isPublished: blogPosts.isPublished,
+      })
         .from(blogPosts)
         .where(and(
           eq(blogPosts.userId, userId),
           gte(blogPosts.createdAt, start),
           lt(blogPosts.createdAt, end),
-          or(eq(blogPosts.isPublished, true), gte(blogPosts.createdAt, activeDraftCutoff)),
         ))
-        .limit(1);
-      if (todayPost) return { status: "daily_limit", staleImageKeys };
+        .limit(20);
+      if (todayPosts.some((post) => countsAsBlogSubmission(post.isPublished, post.status))) {
+        return { status: "daily_limit" };
+      }
 
       const [post] = await tx.insert(blogPosts)
-        .values({ userId, content, imageKeys, isPublished: false, status: "uploading" })
+        .values({ userId, content, imageKeys, isPublished: true, status: "pending" })
         .returning();
-      return { status: "created", post, staleImageKeys };
+      return { status: "created", post };
     });
-  }
-
-  async publishBlogPostDraft(userId: number, postId: number): Promise<BlogPost> {
-    const [post] = await db.update(blogPosts)
-      .set({ isPublished: true, status: "pending" })
-      .where(and(
-        eq(blogPosts.id, postId),
-        eq(blogPosts.userId, userId),
-        eq(blogPosts.isPublished, false),
-        eq(blogPosts.status, "uploading"),
-      ))
-      .returning();
-    if (!post) throw new Error("La publication en cours est introuvable.");
-    return post;
-  }
-
-  async deleteBlogPostDraft(userId: number, postId: number): Promise<void> {
-    await db.delete(blogPosts)
-      .where(and(
-        eq(blogPosts.id, postId),
-        eq(blogPosts.userId, userId),
-        eq(blogPosts.isPublished, false),
-      ));
   }
 
   async getBlogPostImageKey(postId: number, imageIndex: number, forAdmin = false): Promise<string | undefined> {

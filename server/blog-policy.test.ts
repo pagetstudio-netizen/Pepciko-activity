@@ -4,6 +4,7 @@ import { blogApprovalSchema } from "@shared/schema";
 import {
   BLOG_DAILY_LIMIT_MESSAGE,
   BLOG_IMAGE_REQUIRED_MESSAGE,
+  countsAsBlogSubmission,
   getBlogLocalDayWindow,
   isSuccessfulBlogWithdrawalStatus,
 } from "./blog-policy";
@@ -27,6 +28,13 @@ test("blog submission day bounds respect Cameroon local midnight", () => {
   assert.equal(cameroonWindow.dayKey, "2026-11-05");
   assert.equal(cameroonWindow.start.toISOString(), "2026-11-04T23:00:00.000Z");
   assert.equal(cameroonWindow.end.toISOString(), "2026-11-05T23:00:00.000Z");
+});
+
+test("only completed submissions count toward the daily blog limit", () => {
+  assert.equal(countsAsBlogSubmission(true, "pending"), true);
+  assert.equal(countsAsBlogSubmission(true, "approved"), true);
+  assert.equal(countsAsBlogSubmission(false, "uploading"), false);
+  assert.equal(countsAsBlogSubmission(false, "pending"), false);
 });
 
 test("blog policy exposes localized daily and image-required messages", () => {

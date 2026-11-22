@@ -13,7 +13,10 @@ export const BLOG_DAILY_LIMIT_MESSAGE =
 
 export const BLOG_IMAGE_REQUIRED_MESSAGE =
   "Ajoutez au moins une capture d’écran avant d’envoyer votre publication.";
-export const BLOG_DRAFT_STALE_MS = 15 * 60 * 1000;
+
+export function countsAsBlogSubmission(isPublished: boolean, status: string): boolean {
+  return isPublished && (status === "pending" || status === "approved");
+}
 
 export function isSuccessfulBlogWithdrawalStatus(status: string): boolean {
   return status === BLOG_SUCCESSFUL_WITHDRAWAL_STATUS;

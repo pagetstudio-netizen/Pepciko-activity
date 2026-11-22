@@ -314,7 +314,7 @@ export const giftCodeClaims = pgTable("gift_code_claims", {
 });
 
 // User-published blog articles
-export type BlogPostStatus = "uploading" | "pending" | "approved";
+export type BlogPostStatus = "pending" | "approved";
 
 export const blogPosts = pgTable("blog_posts", {
   id: serial("id").primaryKey(),
