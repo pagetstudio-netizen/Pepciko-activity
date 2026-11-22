@@ -49,6 +49,7 @@ Plesk fournit `PORT`. Ne pas copier les Secrets Replit automatiquement : saisir 
 
 ### Selon les fonctions activées
 
+- Images des soumissions Blog : Plesk ne peut pas utiliser le SDK Replit Object Storage. Hors Replit, les images sont enregistrées sur le disque local. Le dossier par défaut est `~/.pepsico-blog-images`. Tu peux définir `BLOG_IMAGE_STORAGE_DIR` sur un dossier persistant et accessible en écriture par l’utilisateur Node.js; garde-le en dehors de `dist/` et du dépôt Git.
 - URL publique et callbacks : après activation du certificat SSL, définir `PUBLIC_APP_URL=https://geenergy.top` (ne pas utiliser l’URL HTTP fournie pour les paiements).
 - Telegram : `TELEGRAM_BOT_TOKEN` et `RAMCHAT_ID` (le nom historique `TELEGRAM_CHAT_ID` reste accepté en secours). Les signalements, alertes et notifications sont envoyés dans ce même groupe.
 - PPayPros : ajouter le triplet de chaque pays utilisé :

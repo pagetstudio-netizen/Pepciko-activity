@@ -3964,7 +3964,8 @@ export async function registerRoutes(
     }
 
     const userId = req.session.userId!;
-    const imageKeys = files.map(() => `blog/${userId}/${randomUUID()}.webp`);
+    const imageObjectNames = files.map(() => `blog/${userId}/${randomUUID()}.webp`);
+    const imageKeys: string[] = [];
     try {
       const eligibility = await storage.getBlogPostingEligibility(userId);
       if (!eligibility.userFound) {
@@ -3978,8 +3979,11 @@ export async function registerRoutes(
       }
 
       const uploads = await Promise.allSettled(
-        files.map((file, index) => uploadBlogImage(imageKeys[index], file.buffer)),
+        files.map((file, index) => uploadBlogImage(imageObjectNames[index], file.buffer)),
       );
+      for (const upload of uploads) {
+        if (upload.status === "fulfilled") imageKeys.push(upload.value);
+      }
       const failedUpload = uploads.find((result) => result.status === "rejected");
       if (failedUpload?.status === "rejected") {
         throw failedUpload.reason;

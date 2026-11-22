@@ -22,6 +22,7 @@ export default function AdminBlogSubmissions() {
   const { toast } = useToast();
   const [rewardAmounts, setRewardAmounts] = useState<Record<number, string>>({});
   const [selectedImage, setSelectedImage] = useState<{ src: string; alt: string } | null>(null);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
   const {
     data: submissions = [],
     isLoading,
@@ -143,18 +144,27 @@ export default function AdminBlogSubmissions() {
                       })}
                       aria-label={`Agrandir la capture ${index + 1}`}
                     >
-                      <img
-                        src={`${image}?variant=thumb`}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        width={360}
-                        height={360}
-                        className="h-full w-full object-cover transition-transform group-hover:scale-[1.03]"
-                      />
-                      <span className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-xs text-white">
-                        Voir en grand
-                      </span>
+                      {failedImages[image] ? (
+                        <span className="flex h-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
+                          Capture indisponible sur ce serveur
+                        </span>
+                      ) : (
+                        <>
+                          <img
+                            src={`${image}?variant=thumb`}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            width={360}
+                            height={360}
+                            className="h-full w-full object-cover transition-transform group-hover:scale-[1.03]"
+                            onError={() => setFailedImages((current) => ({ ...current, [image]: true }))}
+                          />
+                          <span className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-xs text-white">
+                            Voir en grand
+                          </span>
+                        </>
+                      )}
                     </button>
                   ))}
                 </div>

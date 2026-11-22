@@ -1,0 +1,1 @@
+import{j as t}from"./index-CM42DAnp.js";import{T as o}from"./transaction-history-page-BRvFAR9L.js";function e(){return t.jsx(o,{kind:"deposit"})}const s=Object.freeze(Object.defineProperty({__proto__:null,default:e},Symbol.toStringTag,{value:"Module"})),a=Object.freeze(Object.defineProperty({__proto__:null,default:e},Symbol.toStringTag,{value:"Module"}));export{a,s as d};
