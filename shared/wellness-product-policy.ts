@@ -8,15 +8,15 @@ export function getWellnessCardTotalRevenue(purchasePrice: number, totalProfit: 
   return purchasePrice + totalProfit;
 }
 
-export function getWellnessDailyEarnings(totalCycleProfit: number, cycleDays: number): number {
+export function getWellnessDailyEarnings(totalCycleRevenue: number, cycleDays: number): number {
   if (
-    !Number.isSafeInteger(totalCycleProfit)
-    || totalCycleProfit <= 0
+    !Number.isSafeInteger(totalCycleRevenue)
+    || totalCycleRevenue <= 0
     || !Number.isSafeInteger(cycleDays)
     || cycleDays <= 0
   ) {
     return 0;
   }
 
-  return Math.floor(totalCycleProfit / cycleDays);
+  return Math.floor(totalCycleRevenue / cycleDays);
 }

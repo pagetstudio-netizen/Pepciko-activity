@@ -10,7 +10,10 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { getRobotProductImage } from "@/lib/john-deere-assets";
 import { isProductStockFull } from "@shared/product-purchase-limit";
-import { getWellnessDailyEarnings } from "@shared/wellness-product-policy";
+import {
+  getWellnessCardTotalRevenue,
+  getWellnessDailyEarnings,
+} from "@shared/wellness-product-policy";
 import "./product-details.css";
 
 type ProductWithClaimStatus = Product & {
@@ -130,8 +133,9 @@ export default function ProductDetailsPage() {
   const price = Number(product.price) || 0;
   const cycleDays = Number(product.cycleDays) || 0;
   const totalReturn = Number(product.totalReturn) || Number(product.dailyEarnings || 0) * cycleDays;
+  const wellnessTotalRevenue = getWellnessCardTotalRevenue(price, totalReturn);
   const dailyEarnings = product.productType === "wellness"
-    ? getWellnessDailyEarnings(totalReturn, cycleDays)
+    ? getWellnessDailyEarnings(wellnessTotalRevenue, cycleDays)
     : Number(product.dailyEarnings) || 0;
   const fallbackImage = product.productType === "wellness" ? WELLNESS_PRODUCT_IMAGE_URL : undefined;
   const image = getRobotProductImage(product.imageUrl, product.id, product.name, product.productType);
@@ -178,8 +182,8 @@ export default function ProductDetailsPage() {
               <div className="product-detail-metric-row">
                 <span>{product.isFree
                   ? "Gain total :"
-                  : product.productType === "wellness" ? "Gain total du cycle :" : "Gain total à l’échéance :"}</span>
-                <strong>{formatFcfa(totalReturn)}</strong>
+                : product.productType === "wellness" ? "Revenu total du cycle :" : "Gain total à l’échéance :"}</span>
+                <strong>{formatFcfa(product.productType === "wellness" ? wellnessTotalRevenue : totalReturn)}</strong>
               </div>
             )}
             <div className="product-detail-metric-row">

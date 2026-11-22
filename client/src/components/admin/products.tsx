@@ -20,7 +20,10 @@ import {
   PRODUCT_IMAGE_URL,
   WELLNESS_PRODUCT_IMAGE_URL,
 } from "@shared/product-catalog";
-import { getWellnessDailyEarnings } from "@shared/wellness-product-policy";
+import {
+  getWellnessCardTotalRevenue,
+  getWellnessDailyEarnings,
+} from "@shared/wellness-product-policy";
 import {
   formatWellnessProductName,
   getNextWellnessProductNumber,
@@ -242,7 +245,10 @@ export default function AdminProducts() {
     const isWellness = selectedProduct.productType === "wellness";
     const totalReturn = isWellness ? parseInt(data.dailyEarnings) : undefined;
     const dailyEarnings = isWellness
-      ? getWellnessDailyEarnings(totalReturn || 0, cycleDays)
+      ? getWellnessDailyEarnings(
+        getWellnessCardTotalRevenue(price, totalReturn || 0),
+        cycleDays,
+      )
       : parseInt(data.dailyEarnings);
     updateMutation.mutate({
       id: selectedProduct.id,
@@ -271,7 +277,10 @@ export default function AdminProducts() {
     const cycleDays = parseInt(data.cycleDays);
     const totalReturn = productType === "wellness" ? parseInt(data.dailyEarnings) : undefined;
     const dailyEarnings = productType === "wellness"
-      ? getWellnessDailyEarnings(totalReturn || 0, cycleDays)
+      ? getWellnessDailyEarnings(
+        getWellnessCardTotalRevenue(parseInt(data.price), totalReturn || 0),
+        cycleDays,
+      )
       : parseInt(data.dailyEarnings);
     createMutation.mutate({
       productType,
@@ -392,7 +401,10 @@ export default function AdminProducts() {
           Gain journalier calculé :{" "}
           <strong className="text-foreground">
             {getWellnessDailyEarnings(
-              Number(form.watch("dailyEarnings")) || 0,
+              getWellnessCardTotalRevenue(
+                Number(form.watch("price")) || 0,
+                Number(form.watch("dailyEarnings")) || 0,
+              ),
               Number(form.watch("cycleDays")) || 0,
             ).toLocaleString("fr-FR")} FCFA/jour
           </strong>
@@ -464,15 +476,28 @@ export default function AdminProducts() {
       )}
       {form.watch("price") && form.watch("dailyEarnings") && form.watch("cycleDays") && (
         <div className="bg-primary/10 rounded-lg p-3 text-sm">
-          <p className="text-muted-foreground">
-            {allowCustomImage ? "Bénéfice total du cycle :" : "Retour total estimé :"}
-          </p>
-          <p className="font-bold text-primary text-lg">
-            {(allowCustomImage
-              ? Number(form.watch("dailyEarnings"))
-              : parseInt(form.watch("dailyEarnings") || "0") * parseInt(form.watch("cycleDays") || "0")
-            ).toLocaleString("fr-FR")} F
-          </p>
+          {allowCustomImage ? (
+            <>
+              <p className="text-muted-foreground">Bénéfice du cycle :</p>
+              <p className="font-semibold text-primary">
+                {Number(form.watch("dailyEarnings")).toLocaleString("fr-FR")} F
+              </p>
+              <p className="mt-1 text-muted-foreground">Revenu total à répartir (prix + bénéfice) :</p>
+              <p className="font-bold text-primary text-lg">
+                {getWellnessCardTotalRevenue(
+                  Number(form.watch("price")) || 0,
+                  Number(form.watch("dailyEarnings")) || 0,
+                ).toLocaleString("fr-FR")} F
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-muted-foreground">Retour total estimé :</p>
+              <p className="font-bold text-primary text-lg">
+                {(parseInt(form.watch("dailyEarnings") || "0") * parseInt(form.watch("cycleDays") || "0")).toLocaleString("fr-FR")} F
+              </p>
+            </>
+          )}
         </div>
       )}
       <Button type="submit" className="w-full" disabled={isPending} data-testid="button-save-product">
@@ -592,13 +617,22 @@ export default function AdminProducts() {
                   <p className="text-muted-foreground">Gains/jour calculés</p>
                   <p className="font-medium text-foreground">
                     {(product.productType === "wellness"
-                      ? getWellnessDailyEarnings(product.totalReturn, product.cycleDays)
+                      ? getWellnessDailyEarnings(
+                        getWellnessCardTotalRevenue(product.price, product.totalReturn),
+                        product.cycleDays,
+                      )
                       : product.dailyEarnings).toLocaleString()} F
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Total ({product.cycleDays}j)</p>
-                  <p className="font-medium text-primary">{product.totalReturn.toLocaleString()} F</p>
+                  <p className="text-muted-foreground">
+                    {product.productType === "wellness" ? "Revenu total" : `Total (${product.cycleDays}j)`}
+                  </p>
+                  <p className="font-medium text-primary">
+                    {(product.productType === "wellness"
+                      ? getWellnessCardTotalRevenue(product.price, product.totalReturn)
+                      : product.totalReturn).toLocaleString()} F
+                  </p>
                 </div>
               </div>
             </CardContent>

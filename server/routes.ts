@@ -64,6 +64,7 @@ import {
   getNextWellnessProductNumber,
 } from "../shared/wellness-product-names";
 import {
+  getWellnessCardTotalRevenue,
   getWellnessDailyEarnings,
   isValidWellnessCycleDays,
 } from "../shared/wellness-product-policy";
@@ -703,6 +704,17 @@ async function reconcilePpayProsPayin(deposit: Deposit, stateValue: unknown): Pr
     return storage.setDepositNonterminalStatus(deposit.id, "processing");
   }
   throw new Error("État de paiement PPayPros inconnu.");
+}
+
+async function syncPpayProsPayinOrderId(deposit: Deposit, orderIdValue: unknown): Promise<Deposit> {
+  if (typeof orderIdValue !== "string" && typeof orderIdValue !== "number") return deposit;
+  const providerOrderId = String(orderIdValue).trim();
+  if (!providerOrderId) return deposit;
+  if (deposit.omnipayId && deposit.omnipayId !== providerOrderId) {
+    throw new Error("PPayPros a renvoyé un numéro de commande différent de celui du dépôt.");
+  }
+  if (deposit.omnipayId === providerOrderId) return deposit;
+  return storage.updateDeposit(deposit.id, { omnipayId: providerOrderId });
 }
 
 function getBlockedIps(value: string | undefined): string[] {
@@ -1644,7 +1656,10 @@ export async function registerRoutes(
       const productsWithOwnership = products.map(p => ({
         ...p,
         dailyEarnings: p.productType === "wellness"
-          ? getWellnessDailyEarnings(p.totalReturn, p.cycleDays)
+          ? getWellnessDailyEarnings(
+            p.price + p.totalReturn,
+            p.cycleDays,
+          )
           : p.dailyEarnings,
         isOwned: productCounts.has(p.id),
         ownedCount: productCounts.get(p.id) || 0,
@@ -1770,7 +1785,11 @@ export async function registerRoutes(
         .map(up => {
         const productType = up.userProduct.purchaseProductType ?? up.product.productType;
         const cycleDays = up.userProduct.purchaseCycleDays ?? up.product.cycleDays;
-        const totalReturn = up.userProduct.purchaseTotalReturn ?? up.product.totalReturn;
+        const totalProfit = up.userProduct.purchaseTotalReturn ?? up.product.totalReturn;
+        const purchasePrice = up.userProduct.purchasePrice ?? up.product.price;
+        const totalReturn = productType === "wellness"
+          ? getWellnessCardTotalRevenue(purchasePrice, totalProfit)
+          : totalProfit;
         const configuredDailyEarnings = up.userProduct.purchaseDailyEarnings ?? up.product.dailyEarnings;
         return ({
         id: up.userProduct.id,
@@ -1788,7 +1807,7 @@ export async function registerRoutes(
         product: {
           ...up.product,
           name: up.userProduct.purchaseProductName ?? up.product.name,
-          price: up.userProduct.purchasePrice ?? up.product.price,
+          price: purchasePrice,
           dailyEarnings: productType === "wellness"
             ? getWellnessDailyEarnings(totalReturn, cycleDays)
             : configuredDailyEarnings,
@@ -2348,6 +2367,13 @@ export async function registerRoutes(
             notifyUrl: `${baseUrl}/api/webhooks/ppaypros/payin`,
             returnUrl: `${baseUrl}/api/ppaypros/return?depositId=${deposit.id}`,
           });
+          if (payment.mchOrderNo && String(payment.mchOrderNo) !== merchantOrderNo) {
+            await storage.rejectDeposit(deposit.id);
+            return res.status(502).json({
+              message: "PPayPros a renvoyé une référence de dépôt différente.",
+              ppaypros: true,
+            });
+          }
           const payData = typeof payment.payData === "string" ? payment.payData : "";
           if (payment.payDataType !== "payUrl" || !payData) {
             await storage.rejectDeposit(deposit.id);
@@ -3606,7 +3632,8 @@ export async function registerRoutes(
       if (Number(payload.amount) !== toPpayProsAmount(deposit.amount)) {
         return res.status(400).type("text/plain").send("amount mismatch");
       }
-      await reconcilePpayProsPayin(deposit, payload.state);
+      const syncedDeposit = await syncPpayProsPayinOrderId(deposit, payload.payOrderId);
+      await reconcilePpayProsPayin(syncedDeposit, payload.state);
       return res.type("text/plain").send("success");
     } catch (error: any) {
       console.error("[ppaypros] payin callback error:", error.message);
@@ -4312,8 +4339,15 @@ export async function registerRoutes(
       ) {
         return res.status(404).json({ message: "Dépôt PPayPros introuvable" });
       }
-      if (deposit.status === "approved" || deposit.status === "rejected") {
-        return res.json({ status: deposit.status, providerStatus: deposit.status });
+      if (
+        (deposit.status === "approved" || deposit.status === "rejected") &&
+        deposit.omnipayId
+      ) {
+        return res.json({
+          status: deposit.status,
+          providerStatus: deposit.status,
+          payOrderId: deposit.omnipayId,
+        });
       }
 
       const result = await queryPpayProsPayin({
@@ -4330,11 +4364,13 @@ export async function registerRoutes(
       ) {
         return res.status(502).json({ message: "Le montant retourné par PPayPros ne correspond pas au dépôt." });
       }
+      const syncedDeposit = await syncPpayProsPayinOrderId(deposit, result.payOrderId);
       const providerState = result.state ?? result.orderState;
-      const updated = await reconcilePpayProsPayin(deposit, providerState);
+      const updated = await reconcilePpayProsPayin(syncedDeposit, providerState);
       return res.json({
         status: updated?.status || deposit.status,
         providerStatus: String(providerState ?? "pending"),
+        payOrderId: updated?.omnipayId || syncedDeposit.omnipayId || null,
       });
     } catch (error: any) {
       console.error("[ppaypros] admin payin status error:", error.message);
@@ -5113,15 +5149,19 @@ export async function registerRoutes(
       res.json(userProductsList.map(up => {
         const productType = up.userProduct.purchaseProductType ?? up.product.productType;
         const cycleDays = up.userProduct.purchaseCycleDays ?? up.product.cycleDays;
-        const totalReturn = up.userProduct.purchaseTotalReturn ?? up.product.totalReturn;
+        const totalProfit = up.userProduct.purchaseTotalReturn ?? up.product.totalReturn;
+        const productPrice = up.userProduct.purchasePrice ?? up.product.price;
         const dailyEarnings = up.userProduct.purchaseDailyEarnings ?? up.product.dailyEarnings;
         return {
           id: up.userProduct.id,
           productId: up.userProduct.productId,
           productName: up.userProduct.purchaseProductName ?? up.product.name,
-          productPrice: up.userProduct.purchasePrice ?? up.product.price,
+          productPrice,
           dailyEarnings: productType === "wellness"
-            ? getWellnessDailyEarnings(totalReturn, cycleDays)
+            ? getWellnessDailyEarnings(
+              getWellnessCardTotalRevenue(productPrice, totalProfit),
+              cycleDays,
+            )
             : dailyEarnings,
           payoutMode: up.userProduct.payoutMode,
           isActive: up.userProduct.isActive,
@@ -5180,12 +5220,12 @@ export async function registerRoutes(
       const totalProfitInt = totalReturn === undefined
         ? Number(dailyEarnings) * cycleInt
         : Number(totalReturn);
-      const dailyInt = getWellnessDailyEarnings(totalProfitInt, cycleInt);
+      const dailyInt = getWellnessDailyEarnings(priceInt + totalProfitInt, cycleInt);
       const submittedImage = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
       const imageUrl = submittedImage || WELLNESS_PRODUCT_IMAGE_URL;
 
       if (!Number.isSafeInteger(priceInt) || priceInt <= 0
-        || !Number.isSafeInteger(totalProfitInt) || totalProfitInt < cycleInt
+        || !Number.isSafeInteger(totalProfitInt) || totalProfitInt <= 0
         || !Number.isSafeInteger(dailyInt) || dailyInt <= 0
         || !Number.isSafeInteger(cycleInt) || cycleInt <= 0
         || totalProfitInt > 2_147_483_647) {
@@ -5322,16 +5362,25 @@ export async function registerRoutes(
         }
 
         if (body.cycleDays !== undefined) update.cycleDays = nextCycleDays;
-        if (body.totalReturn !== undefined || body.dailyEarnings !== undefined || body.cycleDays !== undefined) {
+        if (
+          body.price !== undefined
+          || body.totalReturn !== undefined
+          || body.dailyEarnings !== undefined
+          || body.cycleDays !== undefined
+        ) {
           const totalProfit = body.totalReturn !== undefined
             ? Number(body.totalReturn)
             : body.dailyEarnings !== undefined
               ? Number(body.dailyEarnings) * nextCycleDays
               : existing.totalReturn;
-          const dailyEarnings = getWellnessDailyEarnings(totalProfit, nextCycleDays);
+          const nextPrice = update.price ?? existing.price;
+          const dailyEarnings = getWellnessDailyEarnings(
+            nextPrice + totalProfit,
+            nextCycleDays,
+          );
           if (
             !Number.isSafeInteger(totalProfit)
-            || totalProfit < nextCycleDays
+            || totalProfit <= 0
             || totalProfit > 2_147_483_647
             || dailyEarnings <= 0
           ) {

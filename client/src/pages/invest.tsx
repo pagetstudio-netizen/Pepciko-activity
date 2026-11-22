@@ -216,12 +216,12 @@ export default function InvestPage() {
               const wellnessLocked = product.productType === "wellness" && product.canPurchaseWellness === false;
               const duration = Number(product.cycleDays || 90);
               const total = Number(product.totalReturn || Number(product.dailyEarnings || 0) * duration);
-              const daily = product.productType === "wellness"
-                ? getWellnessDailyEarnings(total, duration)
-                : Number(product.dailyEarnings || 0);
               const totalRevenue = product.productType === "wellness"
                 ? getWellnessCardTotalRevenue(Number(product.price), total)
                 : total;
+              const daily = product.productType === "wellness"
+                ? getWellnessDailyEarnings(totalRevenue, duration)
+                : Number(product.dailyEarnings || 0);
               const gainsLabel = product.productType === "wellness"
                 ? "Gains journaliers"
                 : product.productType === "stable" ? "Gains quotidiens" : "Gains à l’échéance";
@@ -311,8 +311,11 @@ export default function InvestPage() {
         const insufficientBalance = shortage > 0;
         const duration = Number(confirmProduct.cycleDays || 90);
         const total = Number(confirmProduct.totalReturn || Number(confirmProduct.dailyEarnings || 0) * duration);
+        const totalRevenue = confirmProduct.productType === "wellness"
+          ? getWellnessCardTotalRevenue(price, total)
+          : total;
         const daily = confirmProduct.productType === "wellness"
-          ? getWellnessDailyEarnings(total, duration)
+          ? getWellnessDailyEarnings(totalRevenue, duration)
           : Number(confirmProduct.dailyEarnings || 0);
         const isMaturityProduct = confirmProduct.productType === "activity";
         const gainsLabel = confirmProduct.productType === "wellness"
@@ -389,7 +392,7 @@ export default function InvestPage() {
                 {confirmProduct.productType !== "stable" && (
                   <div className="invest-modal-row">
                     <dt>Revenu total</dt>
-                    <dd>{formatFcfa(total * purchaseQuantity)}</dd>
+                    <dd>{formatFcfa(totalRevenue * purchaseQuantity)}</dd>
                   </div>
                 )}
                 <div className="invest-modal-row invest-quantity-row">

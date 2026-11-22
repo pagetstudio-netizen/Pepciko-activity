@@ -104,13 +104,18 @@ export default function AdminDeposits() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || `Erreur ${response.status}`);
-      return data as { status: string; providerStatus?: string };
+      return data as { status: string; providerStatus?: string; payOrderId?: string | null };
     },
-    onSuccess: ({ status }) => {
+    onSuccess: ({ status, payOrderId }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deposits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
       const label = status === "approved" ? "confirmé" : status === "rejected" ? "refusé" : "toujours en traitement";
-      toast({ title: "Statut PPayPros vérifié", description: `Le dépôt est ${label}.` });
+      toast({
+        title: "Statut PPayPros vérifié",
+        description: payOrderId
+          ? `Le dépôt est ${label}. N° de commande : ${payOrderId}`
+          : `Le dépôt est ${label}.`,
+      });
     },
     onError: (error: any) => {
       toast({ title: "Erreur PPayPros", description: error.message, variant: "destructive" });
@@ -127,6 +132,8 @@ export default function AdminDeposits() {
     ((d as any).inpayOrderNumber && (d as any).inpayOrderNumber.toLowerCase().includes(filter.toLowerCase())) ||
     ((d as any).drimpayReference && (d as any).drimpayReference.toLowerCase().includes(filter.toLowerCase())) ||
     ((d as any).drimpayOrderId && (d as any).drimpayOrderId.toLowerCase().includes(filter.toLowerCase())) ||
+    (d.omnipayReference && d.omnipayReference.toLowerCase().includes(filter.toLowerCase())) ||
+    (d.omnipayId && d.omnipayId.toLowerCase().includes(filter.toLowerCase())) ||
     ((d as any).channelName && (d as any).channelName.toLowerCase().includes(filter.toLowerCase())) ||
     getTransactionOrderNumber("deposit", d.id).includes(filter.toLowerCase()) ||
     String(d.id).includes(filter)
@@ -278,6 +285,21 @@ export default function AdminDeposits() {
                         <p className="font-mono font-medium">{(deposit as any).drimpayOrderId}</p>
                       </div>
                     )}
+                    {isPpayPros &&
+                      deposit.omnipayReference === `PPIN-${deposit.id}` && (
+                        <>
+                          <div className="col-span-2">
+                            <p className="text-muted-foreground text-xs">Référence marchand PPayPros</p>
+                            <p className="font-mono font-medium">{deposit.omnipayReference}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-muted-foreground text-xs">Numéro de commande PPayPros</p>
+                            <p className="font-mono font-medium">
+                              {deposit.omnipayId || "Pas encore communiqué par PPayPros"}
+                            </p>
+                          </div>
+                        </>
+                      )}
                     {isAshtech && ashtechExpired && deposit.status !== "approved" && (
                       <div className="col-span-2 rounded-lg bg-red-50 dark:bg-red-950 p-2 text-xs text-red-700 dark:text-red-300">
                         Transaction non confirmée après 3 heures. Vous pouvez la valider manuellement après vérification.
@@ -378,6 +400,24 @@ export default function AdminDeposits() {
                       </Button>
                     </div>
                   )}
+                  {isPpayPros &&
+                    deposit.omnipayReference === `PPIN-${deposit.id}` &&
+                    !deposit.omnipayId &&
+                    deposit.status !== "pending" &&
+                    deposit.status !== "processing" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => ppayprosStatusMutation.mutate(deposit.id)}
+                        disabled={processingId === deposit.id}
+                        data-testid={`button-sync-ppaypros-deposit-${deposit.id}`}
+                      >
+                        {processingId === deposit.id
+                          ? <Loader2 className="w-4 h-4 animate-spin" />
+                          : <><RefreshCw className="w-4 h-4 mr-1" />Synchroniser la commande PPayPros</>}
+                      </Button>
+                    )}
                 </CardContent>
               </Card>
             );

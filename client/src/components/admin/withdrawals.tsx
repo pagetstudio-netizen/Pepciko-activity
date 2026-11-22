@@ -171,6 +171,7 @@ export default function AdminWithdrawals() {
     ((w as any).inpayOutTradeNo && (w as any).inpayOutTradeNo.toLowerCase().includes(filter.toLowerCase())) ||
     ((w as any).inpayOrderNumber && (w as any).inpayOrderNumber.toLowerCase().includes(filter.toLowerCase())) ||
     (w.omnipayReference && w.omnipayReference.toLowerCase().includes(filter.toLowerCase())) ||
+    (w.omnipayId && w.omnipayId.toLowerCase().includes(filter.toLowerCase())) ||
     (w.drimpayReference && w.drimpayReference.toLowerCase().includes(filter.toLowerCase())) ||
     (w.drimpayExternalRef && w.drimpayExternalRef.toLowerCase().includes(filter.toLowerCase())) ||
     getTransactionOrderNumber("withdrawal", w.id).includes(filter.toLowerCase())
@@ -299,16 +300,18 @@ export default function AdminWithdrawals() {
                       <p className="font-mono font-medium text-foreground">{(withdrawal as any).inpayOrderNumber}</p>
                     </div>
                   )}
-                  {withdrawal.omnipayReference?.startsWith(`PPOUT-${withdrawal.id}`) && (
+                  {withdrawal.omnipayReference === `PPOUT-${withdrawal.id}` && (
                     <div className="col-span-2">
                       <p className="text-muted-foreground">Référence marchand PPayPros</p>
                       <p className="font-mono font-medium text-foreground">{withdrawal.omnipayReference}</p>
                     </div>
                   )}
-                  {withdrawal.omnipayId && withdrawal.omnipayReference?.startsWith(`PPOUT-${withdrawal.id}`) && (
+                  {withdrawal.omnipayReference === `PPOUT-${withdrawal.id}` && (
                     <div className="col-span-2">
                       <p className="text-muted-foreground">Identifiant transfert PPayPros</p>
-                      <p className="font-mono font-medium text-foreground">{withdrawal.omnipayId}</p>
+                      <p className="font-mono font-medium text-foreground">
+                        {withdrawal.omnipayId || "Pas encore communiqué par PPayPros"}
+                      </p>
                     </div>
                   )}
                   {withdrawal.drimpayReference && (

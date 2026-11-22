@@ -13,8 +13,8 @@ import { summarizeTeamProductPurchases } from "./team-investment-stats";
 import { resolveSignupBonus } from "./signup-bonus";
 import {
   calculateDailyPayoutCatchUp,
-  calculateDailyProductPayout,
   calculateMaturityPayout,
+  calculateWellnessDailyPayout,
   getProductPayoutMode,
 } from "./product-payout";
 import { isUserProductRevoked } from "./product-revocation";
@@ -31,7 +31,10 @@ import {
 import { isFirstPaidStableProductPurchase } from "./referral-commission-policy";
 import { getStablePurchaseSpinAwards } from "./fortune-wheel-policy";
 import { hasQualifyingActiveStableProduct } from "./withdrawal-product-eligibility";
-import { getWellnessDailyEarnings } from "../shared/wellness-product-policy";
+import {
+  getWellnessCardTotalRevenue,
+  getWellnessDailyEarnings,
+} from "../shared/wellness-product-policy";
 import {
   FORTUNE_WHEEL_DRAW_PRIZES,
   FORTUNE_WHEEL_PAYOUT_WALLET,
@@ -1232,7 +1235,12 @@ export class DatabaseStorage implements IStorage {
           assignedByAdmin,
           lastEarningDate: new Date(),
           purchasePrice: product.price,
-          purchaseDailyEarnings: product.dailyEarnings,
+          purchaseDailyEarnings: product.productType === "wellness"
+            ? getWellnessDailyEarnings(
+              getWellnessCardTotalRevenue(product.price, product.totalReturn),
+              product.cycleDays,
+            )
+            : product.dailyEarnings,
           purchaseCycleDays: product.cycleDays,
           purchaseTotalReturn: product.totalReturn,
           purchaseProductName: product.name,
@@ -1400,9 +1408,13 @@ export class DatabaseStorage implements IStorage {
         const productType = userProduct.purchaseProductType ?? product.productType;
         const productName = userProduct.purchaseProductName ?? product.name;
 
-        const totalReturn = Number(
+        const configuredTotalReturn = Number(
           userProduct.purchaseTotalReturn ?? product.totalReturn ?? configuredDailyEarnings * cycleDays,
         );
+        const purchasePrice = Number(userProduct.purchasePrice ?? product.price);
+        const totalReturn = productType === "wellness"
+          ? getWellnessCardTotalRevenue(purchasePrice, configuredTotalReturn)
+          : configuredTotalReturn;
         const dailyEarnings = productType === "wellness"
           ? getWellnessDailyEarnings(totalReturn, cycleDays)
           : configuredDailyEarnings;
@@ -1472,12 +1484,12 @@ export class DatabaseStorage implements IStorage {
         const completesCycle = daysSincePurchase >= cycleDays || newDaysRemaining === 0;
 
         if (userProduct.payoutMode === "daily") {
-          const payoutAmount = calculateDailyProductPayout(
+          const payoutAmount = calculateWellnessDailyPayout(
             totalReturn,
-            prepaidEarnings,
-            dailyEarnings,
+            cycleDays,
+            Math.max(0, cycleDays - userProduct.daysRemaining),
             cyclesToAccrue,
-            completesCycle,
+            prepaidEarnings,
           );
           const newPaidEarnings = Math.min(totalReturn, prepaidEarnings + payoutAmount);
           const maturityDate = new Date(purchaseDate.getTime() + cycleDays * 24 * 60 * 60 * 1000);

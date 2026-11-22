@@ -8,20 +8,41 @@ export function getProductPayoutMode(productType: string): "daily" | "maturity" 
   return productType === "wellness" ? "daily" : "maturity";
 }
 
-export function calculateDailyProductPayout(
-  totalReturn: number,
-  prepaidEarnings: number,
-  dailyEarnings: number,
-  cyclesToAccrue: number,
-  completesCycle: boolean,
+export function calculateWellnessDailyPayout(
+  totalCycleRevenue: number,
+  cycleDays: number,
+  daysAlreadyCompleted: number,
+  daysToAccrue: number,
+  alreadyPaid: number,
 ): number {
-  const remainingReturn = calculateMaturityPayout(totalReturn, prepaidEarnings);
-  if (remainingReturn <= 0) return 0;
-  if (completesCycle) return remainingReturn;
+  if (
+    !Number.isSafeInteger(totalCycleRevenue)
+    || totalCycleRevenue <= 0
+    || !Number.isSafeInteger(cycleDays)
+    || cycleDays <= 0
+  ) {
+    return 0;
+  }
 
-  const safeDailyEarnings = Number.isFinite(dailyEarnings) ? Math.max(0, dailyEarnings) : 0;
-  const safeCycles = Number.isSafeInteger(cyclesToAccrue) ? Math.max(0, cyclesToAccrue) : 0;
-  return Math.min(remainingReturn, safeDailyEarnings * safeCycles);
+  const completed = Number.isSafeInteger(daysAlreadyCompleted)
+    ? Math.min(cycleDays, Math.max(0, daysAlreadyCompleted))
+    : 0;
+  const cycles = Number.isSafeInteger(daysToAccrue)
+    ? Math.max(0, daysToAccrue)
+    : 0;
+  if (cycles === 0 || completed >= cycleDays) return 0;
+
+  const firstDay = completed + 1;
+  const lastDay = Math.min(cycleDays, completed + cycles);
+  const scheduledDays = lastDay - firstDay + 1;
+  const baseAmount = Math.floor(totalCycleRevenue / cycleDays);
+  const remainder = totalCycleRevenue % cycleDays;
+  const remainderDays = Math.max(0, Math.min(lastDay, remainder) - firstDay + 1);
+  const scheduledAmount = scheduledDays * baseAmount + remainderDays;
+  const safeAlreadyPaid = Number.isFinite(alreadyPaid) ? Math.max(0, alreadyPaid) : 0;
+  const remainingRevenue = Math.max(0, totalCycleRevenue - safeAlreadyPaid);
+
+  return Math.min(remainingRevenue, scheduledAmount);
 }
 
 export function calculateDailyPayoutCatchUp(
