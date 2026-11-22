@@ -324,7 +324,7 @@ export interface IStorage {
   setSetting(key: string, value: string, modifiedBy?: number): Promise<void>;
   
   // Admin
-  getStats(): Promise<any>;
+  getStats(startDate?: Date, endDate?: Date, excludeAdminCredits?: boolean): Promise<any>;
   logAdminAction(adminId: number, action: string, targetUserId: number | null, details: string): Promise<void>;
   resetStats(): Promise<void>;
   
@@ -2873,7 +2873,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Admin
-  async getStats(startDate?: Date, endDate?: Date): Promise<any> {
+  async getStats(startDate?: Date, endDate?: Date, excludeAdminCredits = false): Promise<any> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
@@ -2890,12 +2890,16 @@ export class DatabaseStorage implements IStorage {
     const [periodUsersResult] = await db.select({ count: sql<number>`count(*)` }).from(users)
       .where(and(gte(users.createdAt, filterStart), lte(users.createdAt, filterEnd)));
     
+    const approvedDepositConditions = [
+      eq(deposits.status, "approved"),
+      ...(excludeAdminCredits ? [ne(deposits.paymentMethod, "Crédit Admin")] : []),
+    ];
     const [totalDepositsResult] = await db.select({ total: sql<string>`COALESCE(SUM(${deposits.amount}), 0)` })
-      .from(deposits).where(and(eq(deposits.status, "approved"), gte(deposits.createdAt, statsResetDate)));
+      .from(deposits).where(and(...approvedDepositConditions, gte(deposits.createdAt, statsResetDate)));
     const [todayDepositsResult] = await db.select({ total: sql<string>`COALESCE(SUM(${deposits.amount}), 0)` })
-      .from(deposits).where(and(eq(deposits.status, "approved"), gte(deposits.createdAt, today)));
+      .from(deposits).where(and(...approvedDepositConditions, gte(deposits.createdAt, today)));
     const [periodDepositsResult] = await db.select({ total: sql<string>`COALESCE(SUM(${deposits.amount}), 0)` })
-      .from(deposits).where(and(eq(deposits.status, "approved"), gte(deposits.createdAt, filterStart), lte(deposits.createdAt, filterEnd)));
+      .from(deposits).where(and(...approvedDepositConditions, gte(deposits.createdAt, filterStart), lte(deposits.createdAt, filterEnd)));
     const [pendingDepositsResult] = await db.select({ total: sql<string>`COALESCE(SUM(${deposits.amount}), 0)`, count: sql<number>`count(*)` })
       .from(deposits).where(eq(deposits.status, "pending"));
     
