@@ -164,6 +164,13 @@ export function resolvePpayProsPayoutAccountCode(
 ): string {
   const countryCode = country.trim().toUpperCase();
   const configured = configuredCode.trim();
+  if (countryCode === "CI") {
+    const operator = paymentMethod.trim().toUpperCase();
+    if (operator.includes("WAVE")) return "6";
+    if (operator.includes("ORANGE")) return "1";
+    if (operator.includes("MTN") || operator.includes("MOMO")) return "2";
+    if (operator.includes("MOOV")) return "3";
+  }
   if (countryCode === "CM") {
     if (!paymentMethod.trim()) {
       return configured || PPAYPROS_COUNTRIES.find(({ code }) => code === countryCode)?.payoutAccountCode || "";

@@ -776,6 +776,7 @@ export default function AdminSettings({ isSuperAdmin }: AdminSettingsProps) {
               {PPAYPROS_COUNTRIES.map(({ code, name, wayCode, payoutAccountCode }) => {
                 const providerConfig = ppayprosConfiguration?.countries.find((entry) => entry.code === code);
                 const isCameroon = String(code) === "CM";
+                const isIvoryCoast = String(code) === "CI";
                 const balance = ppayprosBalances[code];
                 const canEnablePayin = Boolean(
                   providerConfig?.credentials.configured &&
@@ -882,6 +883,8 @@ export default function AdminSettings({ isSuperAdmin }: AdminSettingsProps) {
                           <FormDescription className="text-xs">
                             {isCameroon
                               ? "ORANGE ou MTN est envoyé selon l’opérateur du portefeuille enregistré."
+                              : isIvoryCoast
+                                ? "Code choisi selon le portefeuille enregistré : Orange 1, MTN 2, Moov 3, Wave 6."
                               : payoutAccountCode === "Bank"
                                 ? "PPayPros indique « Bank » comme code générique lorsqu’aucun code bancaire spécifique n’est requis."
                                 : "Saisissez le code de retrait confirmé pour ce pays."}
