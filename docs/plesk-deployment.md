@@ -78,6 +78,6 @@ Activer HTTPS dans Plesk avant de configurer ces URLs : certains fournisseurs re
 
 ## Avant de basculer le site public
 
-Le Supabase actuellement configuré contient la copie de la base **de développement** Replit. La base de production n’a pas été migrée ni vérifiée. Ne pas brancher le site public sur ce Supabase avant d’avoir migré et contrôlé les données de production séparément.
+L'utilisateur a confirmé que le Supabase connecté à l'application est la base de données cible pour les opérations de production. Plesk a son propre environnement : vérifier que `SUPABASE_DATABASE_URL` y pointe vers la même base avant de déployer ou de modifier des données depuis Plesk. Ne pas utiliser le `DATABASE_URL` de développement Replit pour les opérations de production.
 
 Les Secrets présents dans Replit restent séparés de l’environnement Plesk : configure séparément dans Plesk chaque variable requise par les fonctions que tu actives. Ne jamais mettre leurs valeurs dans Git ni dans un fichier `.env` versionné.

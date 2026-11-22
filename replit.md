@@ -12,7 +12,7 @@ Preferred communication style: Simple, everyday language.
 
 - Use the **Run** button / **Start application** workflow (`npm run dev`). Express serves the API and Vite frontend together on port 5000.
 - Dependencies are installed from the root `package.json`. `npm run check`, `npm test`, and `npm run build` validate the project.
-- The user authorized initializing the empty Replit **development** PostgreSQL database for this import. Its schema and initial catalog/settings have been initialized. Existing Supabase data has not been copied or changed.
+- The Replit-managed PostgreSQL database is a separate **development** database. The user confirmed that the connected Supabase database is the production data target; do not use Replit development data for production changes.
 - Runtime and Drizzle prefer `SUPABASE_DATABASE_URL` if configured; otherwise they use the managed `DATABASE_URL`. Keep `SESSION_SECRET` in Secrets.
 - Bootstrap Admin provisioning reads `ADMIN_PHONE`, `ADMIN_PASSWORD`, and optionally `ADMIN_PIN` from Replit Secrets; none of these values belong in source code or `.replit`.
 - Payment-provider credentials have not been imported. The seeded payment settings do not mean live payments are operational.
