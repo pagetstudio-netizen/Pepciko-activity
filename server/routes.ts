@@ -183,6 +183,7 @@ import {
 } from "./ashtechpay";
 import { resolvePaymentWebhookBaseUrl } from "./payment-webhook-url";
 import {
+  createDrimPayPayoutExternalRef,
   createDrimPayReference,
   drimPayGetBalance,
   drimPayGetPayin,
@@ -4674,7 +4675,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "DrimPay exige une URL webhook publique en HTTPS" });
       }
 
-      externalRef = `DRIMPAY-PAYOUT-${withdrawal.id}`;
+      externalRef = createDrimPayPayoutExternalRef(withdrawal.id);
       const claimed = await storage.claimDrimPayWithdrawal(withdrawal.id, externalRef);
       if (!claimed) return res.status(409).json({ message: "Ce retrait est déjà en cours de traitement." });
 

@@ -233,3 +233,8 @@ export function verifyDrimPayWebhookSignature(
 export function createDrimPayReference(kind: "PAYIN" | "PAYOUT", recordId: number) {
   return `DRIMPAY-${kind}-${recordId}-${Date.now()}`;
 }
+
+export function createDrimPayPayoutExternalRef(recordId: number) {
+  const attemptId = crypto.randomBytes(8).toString("hex").toUpperCase();
+  return `DRIMPAY-PAYOUT-${recordId}-${Date.now()}-${attemptId}`;
+}

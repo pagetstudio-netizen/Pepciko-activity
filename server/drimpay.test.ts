@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   drimPayOperatorsForCountry,
   DRIMPAY_MAX_PAYIN_STATUS_CHECKS,
+  createDrimPayPayoutExternalRef,
   getDrimPayWavePaymentUrl,
   getDrimPayOperatorSlug,
   isDrimPayCountry,
@@ -64,6 +65,13 @@ test("DrimPay maps terminal statuses and treats other states as pending", () => 
 
 test("DrimPay automatic pay-in status checks are limited to five attempts", () => {
   assert.equal(DRIMPAY_MAX_PAYIN_STATUS_CHECKS, 5);
+});
+
+test("DrimPay payout retries receive a fresh external reference per attempt", () => {
+  const first = createDrimPayPayoutExternalRef(39);
+  const second = createDrimPayPayoutExternalRef(39);
+  assert.match(first, /^DRIMPAY-PAYOUT-39-\d+-[A-F0-9]{16}$/);
+  assert.notEqual(first, second);
 });
 
 test("DrimPay webhook signature requires the exact fresh raw body and timestamp", () => {
