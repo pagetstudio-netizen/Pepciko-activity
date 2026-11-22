@@ -30,6 +30,7 @@ export default function AdminBlogSubmissions() {
     isFetching,
   } = useQuery<BlogSubmission[]>({
     queryKey: ["/api/admin/blog/submissions"],
+    refetchInterval: 30_000,
   });
 
   const approveMutation = useMutation({
