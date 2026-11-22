@@ -1088,51 +1088,140 @@ export async function registerRoutes(
       /^\/api\/drimpay\/(?:operators|payin)(?:\/|$)/.test(path) ||
       /^\/api\/deposits\/\d+\/drimpay-status$/.test(path) ||
       (isRobotPaySource && /^\/api\/(?:deposits|payment-numbers|ashtechpay|sendavapay)(?:\/|$)/.test(path));
+    const isProviderWebhook = /^\/api\/webhooks\/(?:ppaypros|ashtechpay|drimpay|inpay|westpay|sendavapay)(?:\/|$)/.test(path);
+    const isWithdrawalProviderRequest =
+      /^\/api\/admin\/withdrawals\/\d+\/(?:ppaypros|drimpay|inpay)(?:\/status)?$/.test(path);
     const isPaymentRequest =
       /^\/api\/deposits(?:\/|$)/.test(path) ||
       /^\/api\/(?:payment-channels|payment-numbers|soleaspay\/services)(?:\/|$)/.test(path) ||
       /^\/api\/deposit\/provider(?:\/|$)/.test(path) ||
-      /^\/api\/(?:drimpay|ashtechpay|sendavapay)(?:\/|$)/.test(path);
+      /^\/api\/(?:drimpay|ashtechpay|sendavapay)(?:\/|$)/.test(path) ||
+      isWithdrawalProviderRequest ||
+      isProviderWebhook;
     if (!isPaymentRequest) return next();
 
+    const pathLower = path.toLowerCase();
+    const provider = pathLower.includes("ppaypros") || requestBody.usePpaypros === true
+      ? "PPayPros"
+      : pathLower.includes("ashtech") || pathLower.includes("ashtechpay")
+        ? "AshTechPay"
+        : pathLower.includes("drimpay")
+          ? "DrimPay"
+          : pathLower.includes("inpay")
+            ? "InPay"
+            : pathLower.includes("westpay") || requestBody.useWestpay === true
+              ? "WestPay"
+              : pathLower.includes("sendavapay")
+                ? "SendavaPay"
+                : pathLower.includes("soleaspay") || requestBody.useSoleaspay === true
+                  ? "SoleasPay"
+                  : isRobotPayRequest
+                    ? "RobotPay"
+                    : "Paiement";
+    const recordIdFromPath = path.match(/\/(?:deposits|withdrawals)\/(\d+)(?:\/|$)/)?.[1];
+    const operation = isProviderWebhook
+      ? "Callback fournisseur"
+      : path.includes("/withdrawals/")
+        ? "Retrait automatique"
+        : /(?:-status|\/verify)$/.test(path)
+          ? "Vérification de transaction"
+          : "Dépôt ou initiation";
+
+    const parseResponseBody = (body: unknown): unknown => {
+      if (typeof body !== "string") {
+        if (Buffer.isBuffer(body)) {
+          const text = body.toString("utf8");
+          try { return JSON.parse(text); } catch { return text; }
+        }
+        return body;
+      }
+      try { return JSON.parse(body); } catch { return body; }
+    };
+    let responseBodySnapshot: unknown;
+    const terminalStatuses = ["rejected", "failed", "failure", "expired", "cancelled", "canceled"];
     const originalJson = res.json.bind(res);
     res.json = ((body: unknown) => {
-      if (!body || typeof body !== "object" || Array.isArray(body)) {
-        return originalJson(body);
-      }
-
-      const responseBody = body as Record<string, unknown>;
-      // Ashtech's 400 response is a normal next step in its OTP flow.
-      if (path === "/api/ashtechpay/collect" && responseBody.error === "otp_required") {
-        return originalJson(body);
-      }
-
-      const terminalFailure = ["rejected", "failed", "expired", "cancelled", "canceled"].includes(
-        String(responseBody.status || "").trim().toLowerCase(),
-      );
-      if (res.statusCode < 400 && !terminalFailure) return originalJson(body);
-
-      const errorMessage = responseBody.message
-        ?? responseBody.error
-        ?? (terminalFailure
-          ? `Le fournisseur a refusé le paiement (statut : ${String(responseBody.status)})`
-          : `HTTP ${res.statusCode}`);
-      void sendTelegramPaymentError({
-        path,
-        method: req.method,
-        status: res.statusCode,
-        error: errorMessage,
-        userId: req.session?.userId,
-        amount: requestBody.amount,
-        country: requestBody.country,
-        operator: requestBody.operator ?? requestBody.operatorName,
-      }).catch((notificationError) => {
-        console.error("[telegram] RobotPay error notification failed:", notificationError.message);
-      });
-      return originalJson(isRobotPayRequest
+      responseBodySnapshot = body;
+      const responseBody = body && typeof body === "object" && !Array.isArray(body)
+        ? body as Record<string, unknown>
+        : null;
+      const responseStatus = String(responseBody?.status || "").trim().toLowerCase();
+      const isOtpChallenge = responseBody?.error === "otp_required";
+      const isFailureResponse = res.statusCode >= 400 || terminalStatuses.includes(responseStatus);
+      // Keep the existing customer-facing RobotPay message while reporting
+      // the provider response captured above to the configured Telegram group.
+      return originalJson(isRobotPayRequest && responseBody && isFailureResponse && !isOtpChallenge
         ? { ...responseBody, message: bankClosedMessage }
         : body);
     }) as typeof res.json;
+
+    const originalSend = res.send.bind(res);
+    res.send = ((body: unknown) => {
+      if (responseBodySnapshot === undefined) responseBodySnapshot = parseResponseBody(body);
+      return originalSend(body as any);
+    }) as typeof res.send;
+
+    res.once("finish", () => {
+      const responseBody = responseBodySnapshot && typeof responseBodySnapshot === "object"
+        ? responseBodySnapshot as Record<string, unknown>
+        : {};
+      const nestedRequestData = requestBody.data && typeof requestBody.data === "object"
+        ? requestBody.data as Record<string, unknown>
+        : {};
+      const providerEvent = String(requestBody.event || requestBody.type || "").trim().toLowerCase();
+      const providerStatus = String(requestBody.status || nestedRequestData.status || "").trim().toLowerCase();
+      const responseStatus = String(responseBody.status || "").trim().toLowerCase();
+      const terminalWebhookFailure =
+        isProviderWebhook &&
+        (providerEvent.endsWith(".failed") ||
+          providerEvent.endsWith(".failure") ||
+          providerEvent.endsWith(".expired") ||
+          terminalStatuses.includes(providerStatus));
+      const terminalResponseFailure = terminalStatuses.includes(responseStatus);
+      const otpChallenge = responseBody.error === "otp_required";
+      if (otpChallenge || (!terminalWebhookFailure && res.statusCode < 400 && !terminalResponseFailure)) return;
+      if (res.statusCode === 401 && !isProviderWebhook) return;
+
+      const responseMessage = typeof responseBody.message === "string"
+        ? responseBody.message
+        : typeof responseBody.error === "string"
+          ? responseBody.error
+          : typeof responseBody.code === "string"
+            ? responseBody.code
+            : null;
+      const providerErrorCode = responseBody.error_code ?? responseBody.errorCode ?? responseBody.code;
+      const providerError = terminalWebhookFailure
+        ? requestBody.message ?? requestBody.error ??
+          `Événement ${providerEvent || "de paiement"} — statut ${providerStatus || "refusé"}`
+        : responseMessage
+          ? providerErrorCode && String(providerErrorCode) !== responseMessage
+            ? `${String(providerErrorCode)} — ${responseMessage}`
+            : responseMessage
+          : terminalResponseFailure
+            ? `Le fournisseur a refusé le paiement (statut : ${responseStatus})`
+            : `HTTP ${res.statusCode}`;
+      if (
+        res.statusCode === 403 &&
+        /origine de la requête refusée|accès bloqué|non authentifié/i.test(String(providerError))
+      ) return;
+
+      void sendTelegramPaymentError({
+        provider,
+        operation,
+        path,
+        method: req.method,
+        status: res.statusCode,
+        error: providerError,
+        userId: req.session?.userId,
+        amount: requestBody.amount,
+        country: requestBody.country ?? requestBody.countryCode,
+        operator: requestBody.operator ?? requestBody.operatorName ?? requestBody.paymentMethod,
+        recordId: recordIdFromPath ?? requestBody.depositId ?? requestBody.withdrawalId,
+        reference: requestBody.reference ?? requestBody.external_ref ?? requestBody.out_trade_no ?? requestBody.mchOrderNo,
+      }).catch((notificationError) => {
+        console.error("[telegram] payment error notification failed:", notificationError.message);
+      });
+    });
     next();
   });
 
@@ -4478,13 +4567,6 @@ export async function registerRoutes(
           claimedOutTradeNo,
         ).catch(() => undefined);
       }
-      void sendTelegramInpayError({
-        operation: "Retrait payout",
-        error,
-        recordId: getRouteParam(req.params.id),
-      }).catch((notificationError) => {
-        console.error("[telegram] InPay payout error notification failed:", notificationError.message);
-      });
       console.error("[inpay] payout error:", error);
       res.status(400).json({ message: error.message || "Erreur d'envoi InPay" });
     }

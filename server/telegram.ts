@@ -13,10 +13,17 @@ export function isTelegramConfigured(): boolean {
   return Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
 }
 
-export async function sendTelegramMessage(message: string): Promise<void> {
+function getPaymentErrorsChatId(): string | undefined {
+  return process.env.TELEGRAM_PAYMENT_ERRORS_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
+}
+
+export function isTelegramPaymentErrorsConfigured(): boolean {
+  return Boolean(process.env.TELEGRAM_BOT_TOKEN && getPaymentErrorsChatId());
+}
+
+async function sendTelegramMessageToChat(message: string, chatId: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return;
+  if (!token) return;
 
   const response = await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
     method: "POST",
@@ -33,6 +40,12 @@ export async function sendTelegramMessage(message: string): Promise<void> {
     const body = await response.text().catch(() => "");
     throw new Error(`Telegram HTTP ${response.status}: ${body.slice(0, 200)}`);
   }
+}
+
+export async function sendTelegramMessage(message: string): Promise<void> {
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!chatId) return;
+  await sendTelegramMessageToChat(message, chatId);
 }
 
 export type DepositSupportReport = {
@@ -152,6 +165,8 @@ export function formatTelegramValue(value: unknown): string {
 }
 
 export type RobotPayErrorNotification = {
+  provider?: unknown;
+  operation?: unknown;
   path: string;
   method: string;
   status: number;
@@ -160,6 +175,8 @@ export type RobotPayErrorNotification = {
   amount?: unknown;
   country?: unknown;
   operator?: unknown;
+  reference?: unknown;
+  recordId?: unknown;
 };
 
 function redactPaymentError(value: unknown): string {
@@ -168,27 +185,34 @@ function redactPaymentError(value: unknown): string {
     .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [masqué]")
     .replace(/\b(?:dp_(?:live|sandbox)_sk_|sk_(?:live|test)_)[A-Za-z0-9_-]+/gi, "[clé masquée]")
     .replace(/\b(api[_ -]?key|secret|token|password|authorization)\s*[:=]\s*["']?[^,\s"'<>]+/gi, "$1=[masqué]")
+    .replace(/([?&](?:api[_-]?key|token|secret|signature|sign|authorization)=)[^&\s]+/gi, "$1[masqué]")
+    .replace(/\b(otp|code otp|code de vérification|verification code)\s*[:=]?\s*["']?\d{4,10}\b/gi, "$1=[masqué]")
+    .replace(/\b(phone|telephone|mobile|account_number|num[eé]ro(?: de téléphone)?|téléphone)\s*[:=]?\s*["']?\+?[\d][\d\s().-]{6,20}/gi, "$1=[numéro masqué]")
     .slice(0, 1500);
 }
 
 export function buildRobotPayErrorNotification(data: RobotPayErrorNotification): string {
   return [
-    "❌ <b>Erreur de paiement RobotPay</b>",
-    `Opération : <code>${formatTelegramValue(data.method)} ${formatTelegramValue(data.path)}</code>`,
+    `❌ <b>Erreur de paiement — ${formatTelegramValue(data.provider || "Paiement")}</b>`,
+    data.operation ? `Action : ${formatTelegramValue(data.operation)}` : "",
+    `Endpoint : <code>${formatTelegramValue(data.method)} ${formatTelegramValue(data.path)}</code>`,
     `Statut HTTP : <b>${formatTelegramValue(data.status)}</b>`,
     data.userId !== undefined ? `Utilisateur ID : <code>${formatTelegramValue(data.userId)}</code>` : "",
     data.amount !== undefined ? `Montant : <b>${formatTelegramValue(data.amount)} XOF</b>` : "",
     data.country ? `Pays : ${formatTelegramValue(data.country)}` : "",
     data.operator ? `Opérateur : ${formatTelegramValue(data.operator)}` : "",
+    data.recordId !== undefined ? `ID opération : <code>${formatTelegramValue(data.recordId)}</code>` : "",
+    data.reference ? `Référence : <code>${formatTelegramValue(data.reference)}</code>` : "",
     `Erreur réelle : <code>${formatTelegramValue(redactPaymentError(data.error))}</code>`,
   ].filter(Boolean).join("\n");
 }
 
 export async function sendTelegramPaymentError(data: RobotPayErrorNotification): Promise<void> {
-  if (!isTelegramConfigured()) {
-    throw new Error("Le bot Telegram ou le groupe administrateur n'est pas configuré");
+  const chatId = getPaymentErrorsChatId();
+  if (!process.env.TELEGRAM_BOT_TOKEN || !chatId) {
+    throw new Error("Le bot Telegram ou le groupe des erreurs de paiement n'est pas configuré");
   }
-  await sendTelegramMessage(buildRobotPayErrorNotification(data));
+  await sendTelegramMessageToChat(buildRobotPayErrorNotification(data), chatId);
 }
 
 export type ManualDepositNotification = {
