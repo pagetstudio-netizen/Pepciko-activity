@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import EmptyState from "@/components/empty-state";
 import WithdrawalFloatingTools from "@/components/withdrawal-floating-tools";
+import { getTransactionOrderNumber } from "@shared/transaction-order-number";
 import "./transaction-history-page.css";
 
 type HistoryKind = "deposit" | "withdrawal";
@@ -136,6 +137,11 @@ export default function TransactionHistoryPage({ kind }: { kind: HistoryKind }) 
                   label: isDeposit ? "Montant du dépôt" : "Montant du retrait",
                   value: formatFcfa(transaction.amount),
                   valueClassName: "transaction-history-page__row-value--amount",
+                },
+                {
+                  label: "Référence de commande",
+                  value: getTransactionOrderNumber(isDeposit ? "deposit" : "withdrawal", transaction.id),
+                  valueClassName: "transaction-history-page__order-number",
                 },
                 {
                   label: "Montant reçu",

@@ -6,6 +6,7 @@ import {
   calculateMaturityPayout,
   getProductPayoutMode,
 } from "./product-payout";
+import { getWellnessDailyEarnings } from "../shared/wellness-product-policy";
 
 test("maturity payout deducts earnings already paid before the policy change", () => {
   assert.equal(calculateMaturityPayout(1500, 500), 1000);
@@ -29,6 +30,25 @@ test("daily payouts credit each elapsed cycle and cap at the remaining return", 
   assert.equal(calculateDailyProductPayout(1000, 200, 100, 2, false), 200);
   assert.equal(calculateDailyProductPayout(250, 200, 100, 2, false), 50);
   assert.equal(calculateDailyProductPayout(1000, 950, 100, 1, false), 50);
+});
+
+test("a wellness cycle earning 4,000 FCFA over two days credits 2,000 per day", () => {
+  const totalCycleProfit = 4000;
+  const dailyEarnings = getWellnessDailyEarnings(totalCycleProfit, 2);
+  assert.equal(dailyEarnings, 2000);
+  assert.equal(calculateDailyProductPayout(totalCycleProfit, 0, dailyEarnings, 1, false), 2000);
+  assert.equal(calculateDailyProductPayout(totalCycleProfit, 2000, dailyEarnings, 1, true), 2000);
+});
+
+test("wellness pays any indivisible remainder on the final day", () => {
+  const totalCycleProfit = 4001;
+  const dailyEarnings = getWellnessDailyEarnings(totalCycleProfit, 2);
+  const firstDay = calculateDailyProductPayout(totalCycleProfit, 0, dailyEarnings, 1, false);
+  const finalDay = calculateDailyProductPayout(totalCycleProfit, firstDay, dailyEarnings, 1, true);
+
+  assert.equal(firstDay, 2000);
+  assert.equal(finalDay, 2001);
+  assert.equal(firstDay + finalDay, totalCycleProfit);
 });
 
 test("the final daily payout settles any remaining return", () => {

@@ -13,14 +13,6 @@ export function isTelegramConfigured(): boolean {
   return Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
 }
 
-function getPaymentErrorsChatId(): string | undefined {
-  return process.env.TELEGRAM_PAYMENT_ERRORS_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
-}
-
-export function isTelegramPaymentErrorsConfigured(): boolean {
-  return Boolean(process.env.TELEGRAM_BOT_TOKEN && getPaymentErrorsChatId());
-}
-
 async function sendTelegramMessageToChat(message: string, chatId: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return;
@@ -208,9 +200,9 @@ export function buildRobotPayErrorNotification(data: RobotPayErrorNotification):
 }
 
 export async function sendTelegramPaymentError(data: RobotPayErrorNotification): Promise<void> {
-  const chatId = getPaymentErrorsChatId();
+  const chatId = process.env.TELEGRAM_CHAT_ID;
   if (!process.env.TELEGRAM_BOT_TOKEN || !chatId) {
-    throw new Error("Le bot Telegram ou le groupe des erreurs de paiement n'est pas configuré");
+    throw new Error("Le bot Telegram ou le groupe Telegram n'est pas configuré");
   }
   await sendTelegramMessageToChat(buildRobotPayErrorNotification(data), chatId);
 }

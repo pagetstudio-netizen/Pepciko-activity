@@ -10,6 +10,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { getRobotProductImage } from "@/lib/john-deere-assets";
 import { isProductStockFull } from "@shared/product-purchase-limit";
+import { getWellnessDailyEarnings } from "@shared/wellness-product-policy";
 import "./product-details.css";
 
 type ProductWithClaimStatus = Product & {
@@ -127,9 +128,11 @@ export default function ProductDetailsPage() {
   }
 
   const price = Number(product.price) || 0;
-  const dailyEarnings = Number(product.dailyEarnings) || 0;
   const cycleDays = Number(product.cycleDays) || 0;
-  const totalReturn = Number(product.totalReturn) || dailyEarnings * cycleDays;
+  const totalReturn = Number(product.totalReturn) || Number(product.dailyEarnings || 0) * cycleDays;
+  const dailyEarnings = product.productType === "wellness"
+    ? getWellnessDailyEarnings(totalReturn, cycleDays)
+    : Number(product.dailyEarnings) || 0;
   const fallbackImage = product.productType === "wellness" ? WELLNESS_PRODUCT_IMAGE_URL : undefined;
   const image = getRobotProductImage(product.imageUrl, product.id, product.name, product.productType);
   const cannotClaimFree = Boolean(product.isFree && !product.canClaimFree);

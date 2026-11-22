@@ -63,7 +63,10 @@ import {
   formatWellnessProductName,
   getNextWellnessProductNumber,
 } from "../shared/wellness-product-names";
-import { isValidWellnessCycleDays } from "../shared/wellness-product-policy";
+import {
+  getWellnessDailyEarnings,
+  isValidWellnessCycleDays,
+} from "../shared/wellness-product-policy";
 import { calculateVipLevels } from "../shared/vip-levels";
 import { MemoryWindowRateLimiter } from "./security-rate-limit";
 import { signSecurityPayload, verifySecurityPayload } from "./security-tokens";
@@ -1640,6 +1643,9 @@ export async function registerRoutes(
 
       const productsWithOwnership = products.map(p => ({
         ...p,
+        dailyEarnings: p.productType === "wellness"
+          ? getWellnessDailyEarnings(p.totalReturn, p.cycleDays)
+          : p.dailyEarnings,
         isOwned: productCounts.has(p.id),
         ownedCount: productCounts.get(p.id) || 0,
         canClaimFree: p.isFree && canClaimFree,
@@ -1761,7 +1767,12 @@ export async function registerRoutes(
       
       const formattedProducts = userProductsList
         .filter(up => !up.userProduct.isRevoked)
-        .map(up => ({
+        .map(up => {
+        const productType = up.userProduct.purchaseProductType ?? up.product.productType;
+        const cycleDays = up.userProduct.purchaseCycleDays ?? up.product.cycleDays;
+        const totalReturn = up.userProduct.purchaseTotalReturn ?? up.product.totalReturn;
+        const configuredDailyEarnings = up.userProduct.purchaseDailyEarnings ?? up.product.dailyEarnings;
+        return ({
         id: up.userProduct.id,
         productId: up.userProduct.productId,
         purchasedAt: up.userProduct.purchaseDate,
@@ -1771,20 +1782,23 @@ export async function registerRoutes(
         prepaidEarnings: up.userProduct.purchasePrepaidEarnings ?? (
           up.userProduct.payoutMode === "daily" ? up.userProduct.totalEarned : 0
         ),
-        totalReturn: up.userProduct.purchaseTotalReturn ?? up.product.totalReturn,
+        totalReturn,
         status: up.userProduct.isActive ? 'active' : 'completed',
-        productType: up.userProduct.purchaseProductType ?? up.product.productType,
+        productType,
         product: {
           ...up.product,
           name: up.userProduct.purchaseProductName ?? up.product.name,
           price: up.userProduct.purchasePrice ?? up.product.price,
-          dailyEarnings: up.userProduct.purchaseDailyEarnings ?? up.product.dailyEarnings,
-          cycleDays: up.userProduct.purchaseCycleDays ?? up.product.cycleDays,
-          totalReturn: up.userProduct.purchaseTotalReturn ?? up.product.totalReturn,
+          dailyEarnings: productType === "wellness"
+            ? getWellnessDailyEarnings(totalReturn, cycleDays)
+            : configuredDailyEarnings,
+          cycleDays,
+          totalReturn,
           imageUrl: up.userProduct.purchaseImageUrl ?? up.product.imageUrl,
           productType: up.userProduct.purchaseProductType ?? up.product.productType,
         },
-        }));
+        });
+      });
       
       res.json(formattedProducts);
     } catch (error: any) {
@@ -5096,19 +5110,27 @@ export async function registerRoutes(
     try {
       const userId = parseInt(getRouteParam(req.params.id));
       const userProductsList = await storage.getAllUserProducts(userId);
-      res.json(userProductsList.map(up => ({
-        id: up.userProduct.id,
-        productId: up.userProduct.productId,
-        productName: up.product.name,
-        productPrice: up.product.price,
-        dailyEarnings: up.product.dailyEarnings,
-        payoutMode: up.userProduct.payoutMode,
-        isActive: up.userProduct.isActive,
-        isRevoked: up.userProduct.isRevoked,
-        purchaseDate: up.userProduct.purchaseDate,
-        daysClaimed: up.product.cycleDays - up.userProduct.daysRemaining,
-        totalCycle: up.product.cycleDays,
-      })));
+      res.json(userProductsList.map(up => {
+        const productType = up.userProduct.purchaseProductType ?? up.product.productType;
+        const cycleDays = up.userProduct.purchaseCycleDays ?? up.product.cycleDays;
+        const totalReturn = up.userProduct.purchaseTotalReturn ?? up.product.totalReturn;
+        const dailyEarnings = up.userProduct.purchaseDailyEarnings ?? up.product.dailyEarnings;
+        return {
+          id: up.userProduct.id,
+          productId: up.userProduct.productId,
+          productName: up.userProduct.purchaseProductName ?? up.product.name,
+          productPrice: up.userProduct.purchasePrice ?? up.product.price,
+          dailyEarnings: productType === "wellness"
+            ? getWellnessDailyEarnings(totalReturn, cycleDays)
+            : dailyEarnings,
+          payoutMode: up.userProduct.payoutMode,
+          isActive: up.userProduct.isActive,
+          isRevoked: up.userProduct.isRevoked,
+          purchaseDate: up.userProduct.purchaseDate,
+          daysClaimed: cycleDays - up.userProduct.daysRemaining,
+          totalCycle: cycleDays,
+        };
+      }));
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -5152,19 +5174,23 @@ export async function registerRoutes(
 
   app.post("/api/admin/products/wellness", requireAdmin, async (req, res) => {
     try {
-      const { price, dailyEarnings, cycleDays } = req.body ?? {};
+      const { price, dailyEarnings, totalReturn, cycleDays } = req.body ?? {};
       const priceInt = Number(price);
-      const dailyInt = Number(dailyEarnings);
       const cycleInt = Number(cycleDays);
+      const totalProfitInt = totalReturn === undefined
+        ? Number(dailyEarnings) * cycleInt
+        : Number(totalReturn);
+      const dailyInt = getWellnessDailyEarnings(totalProfitInt, cycleInt);
       const submittedImage = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
       const imageUrl = submittedImage || WELLNESS_PRODUCT_IMAGE_URL;
 
       if (!Number.isSafeInteger(priceInt) || priceInt <= 0
+        || !Number.isSafeInteger(totalProfitInt) || totalProfitInt < cycleInt
         || !Number.isSafeInteger(dailyInt) || dailyInt <= 0
         || !Number.isSafeInteger(cycleInt) || cycleInt <= 0
-        || dailyInt * cycleInt > 2_147_483_647) {
+        || totalProfitInt > 2_147_483_647) {
         return res.status(400).json({
-          message: "Le prix, le gain journalier et la durée doivent être des nombres entiers positifs.",
+          message: "Le prix, le bénéfice total et la durée doivent être valides. Le bénéfice doit permettre un gain positif par jour.",
         });
       }
       if (submittedImage && !isAllowedWellnessImageUrl(submittedImage)) {
@@ -5178,7 +5204,7 @@ export async function registerRoutes(
         price: priceInt,
         dailyEarnings: dailyInt,
         cycleDays: cycleInt,
-        totalReturn: dailyInt * cycleInt,
+        totalReturn: totalProfitInt,
         imageUrl,
         productType: "wellness",
         launchDate: null,
@@ -5279,13 +5305,52 @@ export async function registerRoutes(
           return res.status(400).json({ message: "Le nom des produits stables est attribué automatiquement." });
         }
       }
-      for (const field of ["price", "dailyEarnings", "cycleDays"] as const) {
-        if (body[field] === undefined) continue;
-        const value = Number(body[field]);
-        if (!Number.isSafeInteger(value) || value <= 0) {
-          return res.status(400).json({ message: "Le prix, le gain journalier et la durée doivent être des nombres entiers positifs." });
+      if (existing.productType === "wellness") {
+        if (body.price !== undefined) {
+          const price = Number(body.price);
+          if (!Number.isSafeInteger(price) || price <= 0) {
+            return res.status(400).json({ message: "Le prix doit être un nombre entier positif." });
+          }
+          update.price = price;
         }
-        update[field] = value;
+
+        const nextCycleDays = body.cycleDays === undefined
+          ? existing.cycleDays
+          : Number(body.cycleDays);
+        if (!Number.isSafeInteger(nextCycleDays) || nextCycleDays <= 0) {
+          return res.status(400).json({ message: "La durée doit être un nombre entier positif." });
+        }
+
+        if (body.cycleDays !== undefined) update.cycleDays = nextCycleDays;
+        if (body.totalReturn !== undefined || body.dailyEarnings !== undefined || body.cycleDays !== undefined) {
+          const totalProfit = body.totalReturn !== undefined
+            ? Number(body.totalReturn)
+            : body.dailyEarnings !== undefined
+              ? Number(body.dailyEarnings) * nextCycleDays
+              : existing.totalReturn;
+          const dailyEarnings = getWellnessDailyEarnings(totalProfit, nextCycleDays);
+          if (
+            !Number.isSafeInteger(totalProfit)
+            || totalProfit < nextCycleDays
+            || totalProfit > 2_147_483_647
+            || dailyEarnings <= 0
+          ) {
+            return res.status(400).json({
+              message: "Le bénéfice total doit permettre un gain journalier positif pour cette durée.",
+            });
+          }
+          update.totalReturn = totalProfit;
+          update.dailyEarnings = dailyEarnings;
+        }
+      } else {
+        for (const field of ["price", "dailyEarnings", "cycleDays"] as const) {
+          if (body[field] === undefined) continue;
+          const value = Number(body[field]);
+          if (!Number.isSafeInteger(value) || value <= 0) {
+            return res.status(400).json({ message: "Le prix, le gain journalier et la durée doivent être des nombres entiers positifs." });
+          }
+          update[field] = value;
+        }
       }
       if (body.imageUrl !== undefined) {
         if (existing.productType === "wellness") {
@@ -5330,13 +5395,15 @@ export async function registerRoutes(
         update.launchDate = launchDate;
         update.launchTime = launchTime;
       }
-      const nextDailyEarnings = update.dailyEarnings ?? existing.dailyEarnings;
-      const nextCycleDays = update.cycleDays ?? existing.cycleDays;
-      if (nextDailyEarnings * nextCycleDays > 2_147_483_647) {
-        return res.status(400).json({ message: "Le gain total dépasse la limite autorisée." });
-      }
-      if (update.dailyEarnings !== undefined || update.cycleDays !== undefined) {
-        update.totalReturn = nextDailyEarnings * nextCycleDays;
+      if (existing.productType !== "wellness") {
+        const nextDailyEarnings = update.dailyEarnings ?? existing.dailyEarnings;
+        const nextCycleDays = update.cycleDays ?? existing.cycleDays;
+        if (nextDailyEarnings * nextCycleDays > 2_147_483_647) {
+          return res.status(400).json({ message: "Le gain total dépasse la limite autorisée." });
+        }
+        if (update.dailyEarnings !== undefined || update.cycleDays !== undefined) {
+          update.totalReturn = nextDailyEarnings * nextCycleDays;
+        }
       }
 
       const product = await storage.updateProduct(id, update);

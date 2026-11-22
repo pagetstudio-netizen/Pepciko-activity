@@ -20,6 +20,7 @@ import {
   PRODUCT_IMAGE_URL,
   WELLNESS_PRODUCT_IMAGE_URL,
 } from "@shared/product-catalog";
+import { getWellnessDailyEarnings } from "@shared/wellness-product-policy";
 import {
   formatWellnessProductName,
   getNextWellnessProductNumber,
@@ -37,7 +38,7 @@ import EmptyState from "@/components/empty-state";
 const productSchema = z.object({
   name: z.string().min(2, "Nom requis"),
   price: z.string().min(1, "Prix requis"),
-  dailyEarnings: z.string().min(1, "Gains journaliers requis"),
+  dailyEarnings: z.string().min(1, "Valeur des gains requise"),
   cycleDays: z.string().min(1, "Durée requise"),
   imageUrl: z.string().optional(),
   launchDate: z.string().optional(),
@@ -103,7 +104,10 @@ export default function AdminProducts() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async ({ data, productType }: { data: ProductForm; productType: ProductType }) => {
+    mutationFn: async ({ data, productType }: {
+      data: ProductForm & { totalReturn?: number };
+      productType: ProductType;
+    }) => {
       const path = productType === "wellness"
         ? "/api/admin/products/wellness"
         : "/api/admin/products";
@@ -218,7 +222,9 @@ export default function AdminProducts() {
     editForm.reset({
       name: product.name,
       price: product.price.toString(),
-      dailyEarnings: product.dailyEarnings.toString(),
+      dailyEarnings: (product.productType === "wellness"
+        ? product.totalReturn
+        : product.dailyEarnings).toString(),
       cycleDays: product.cycleDays.toString(),
       imageUrl: product.productType === "wellness"
         ? product.imageUrl || WELLNESS_PRODUCT_IMAGE_URL
@@ -232,8 +238,12 @@ export default function AdminProducts() {
   const handleUpdate = (data: ProductForm) => {
     if (!selectedProduct) return;
     const price = parseInt(data.price);
-    const dailyEarnings = parseInt(data.dailyEarnings);
     const cycleDays = parseInt(data.cycleDays);
+    const isWellness = selectedProduct.productType === "wellness";
+    const totalReturn = isWellness ? parseInt(data.dailyEarnings) : undefined;
+    const dailyEarnings = isWellness
+      ? getWellnessDailyEarnings(totalReturn || 0, cycleDays)
+      : parseInt(data.dailyEarnings);
     updateMutation.mutate({
       id: selectedProduct.id,
       data: {
@@ -241,7 +251,7 @@ export default function AdminProducts() {
         price,
         dailyEarnings,
         cycleDays,
-        totalReturn: dailyEarnings * cycleDays,
+        totalReturn: totalReturn ?? dailyEarnings * cycleDays,
         imageUrl: selectedProduct.productType === "wellness"
           ? data.imageUrl || WELLNESS_PRODUCT_IMAGE_URL
           : PRODUCT_IMAGE_URL,
@@ -258,10 +268,17 @@ export default function AdminProducts() {
 
   const handleCreate = (data: ProductForm) => {
     const productType = productView;
+    const cycleDays = parseInt(data.cycleDays);
+    const totalReturn = productType === "wellness" ? parseInt(data.dailyEarnings) : undefined;
+    const dailyEarnings = productType === "wellness"
+      ? getWellnessDailyEarnings(totalReturn || 0, cycleDays)
+      : parseInt(data.dailyEarnings);
     createMutation.mutate({
       productType,
       data: {
         ...data,
+        dailyEarnings: dailyEarnings.toString(),
+        ...(totalReturn !== undefined ? { totalReturn } : {}),
         name: productType === "wellness" ? nextWellnessProductName : nextStableProductName,
       },
     });
@@ -344,8 +361,14 @@ export default function AdminProducts() {
         )} />
         <FormField control={form.control} name="dailyEarnings" render={({ field }) => (
           <FormItem>
-            <FormLabel>Gains/jour (F)</FormLabel>
-            <FormControl><Input {...field} type="number" placeholder="Ex: 300" /></FormControl>
+            <FormLabel>{allowCustomImage ? "Gain total du cycle (F)" : "Gains/jour (F)"}</FormLabel>
+            <FormControl>
+              <Input
+                {...field}
+                type="number"
+                placeholder={allowCustomImage ? "Ex: 4000" : "Ex: 300"}
+              />
+            </FormControl>
             <FormMessage />
           </FormItem>
         )} />
@@ -364,6 +387,17 @@ export default function AdminProducts() {
           <FormMessage />
         </FormItem>
       )} />
+      {allowCustomImage && (
+        <p className="text-sm text-muted-foreground">
+          Gain journalier calculé :{" "}
+          <strong className="text-foreground">
+            {getWellnessDailyEarnings(
+              Number(form.watch("dailyEarnings")) || 0,
+              Number(form.watch("cycleDays")) || 0,
+            ).toLocaleString("fr-FR")} FCFA/jour
+          </strong>
+        </p>
+      )}
       {allowCustomImage && (
         <FormField control={form.control} name="imageUrl" render={({ field }) => (
           <FormItem>
@@ -430,9 +464,14 @@ export default function AdminProducts() {
       )}
       {form.watch("price") && form.watch("dailyEarnings") && form.watch("cycleDays") && (
         <div className="bg-primary/10 rounded-lg p-3 text-sm">
-          <p className="text-muted-foreground">Retour total estimé :</p>
+          <p className="text-muted-foreground">
+            {allowCustomImage ? "Bénéfice total du cycle :" : "Retour total estimé :"}
+          </p>
           <p className="font-bold text-primary text-lg">
-            {(parseInt(form.watch("dailyEarnings") || "0") * parseInt(form.watch("cycleDays") || "0")).toLocaleString()} F
+            {(allowCustomImage
+              ? Number(form.watch("dailyEarnings"))
+              : parseInt(form.watch("dailyEarnings") || "0") * parseInt(form.watch("cycleDays") || "0")
+            ).toLocaleString("fr-FR")} F
           </p>
         </div>
       )}
@@ -551,7 +590,11 @@ export default function AdminProducts() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Gains/jour calculés</p>
-                  <p className="font-medium text-foreground">{product.dailyEarnings.toLocaleString()} F</p>
+                  <p className="font-medium text-foreground">
+                    {(product.productType === "wellness"
+                      ? getWellnessDailyEarnings(product.totalReturn, product.cycleDays)
+                      : product.dailyEarnings).toLocaleString()} F
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Total ({product.cycleDays}j)</p>

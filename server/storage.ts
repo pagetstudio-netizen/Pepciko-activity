@@ -31,6 +31,7 @@ import {
 import { isFirstPaidStableProductPurchase } from "./referral-commission-policy";
 import { getStablePurchaseSpinAwards } from "./fortune-wheel-policy";
 import { hasQualifyingActiveStableProduct } from "./withdrawal-product-eligibility";
+import { getWellnessDailyEarnings } from "../shared/wellness-product-policy";
 import {
   FORTUNE_WHEEL_DRAW_PRIZES,
   FORTUNE_WHEEL_PAYOUT_WALLET,
@@ -1394,14 +1395,17 @@ export class DatabaseStorage implements IStorage {
         const daysSincePurchase = Math.floor(msSincePurchase / (24 * 60 * 60 * 1000));
         const msSinceLastEarning = now.getTime() - lastEarning.getTime();
         const cyclesSinceLastEarning = Math.floor(msSinceLastEarning / (24 * 60 * 60 * 1000));
-        const dailyEarnings = Number(userProduct.purchaseDailyEarnings ?? product.dailyEarnings);
+        const configuredDailyEarnings = Number(userProduct.purchaseDailyEarnings ?? product.dailyEarnings);
         const cycleDays = Number(userProduct.purchaseCycleDays ?? product.cycleDays);
         const productType = userProduct.purchaseProductType ?? product.productType;
         const productName = userProduct.purchaseProductName ?? product.name;
 
         const totalReturn = Number(
-          userProduct.purchaseTotalReturn ?? product.totalReturn ?? dailyEarnings * cycleDays,
+          userProduct.purchaseTotalReturn ?? product.totalReturn ?? configuredDailyEarnings * cycleDays,
         );
+        const dailyEarnings = productType === "wellness"
+          ? getWellnessDailyEarnings(totalReturn, cycleDays)
+          : configuredDailyEarnings;
         const accruedSoFar = Math.min(totalReturn, Math.max(0, Number(userProduct.totalEarned || 0)));
         const prepaidEarnings = Math.min(
           totalReturn,

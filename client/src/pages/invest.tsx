@@ -15,7 +15,10 @@ import {
   isProductStockFull,
   MAX_PRODUCT_PURCHASE_QUANTITY,
 } from "@shared/product-purchase-limit";
-import { getWellnessCardTotalRevenue } from "@shared/wellness-product-policy";
+import {
+  getWellnessCardTotalRevenue,
+  getWellnessDailyEarnings,
+} from "@shared/wellness-product-policy";
 
 import { getRobotProductImage } from "@/lib/john-deere-assets";
 import EmptyState from "@/components/empty-state";
@@ -211,15 +214,17 @@ export default function InvestPage() {
                 product.stockCount || 0,
               );
               const wellnessLocked = product.productType === "wellness" && product.canPurchaseWellness === false;
-              const daily = Number(product.dailyEarnings || 0);
-              const total = Number(product.totalReturn || daily * Number(product.cycleDays || 90));
+              const duration = Number(product.cycleDays || 90);
+              const total = Number(product.totalReturn || Number(product.dailyEarnings || 0) * duration);
+              const daily = product.productType === "wellness"
+                ? getWellnessDailyEarnings(total, duration)
+                : Number(product.dailyEarnings || 0);
               const totalRevenue = product.productType === "wellness"
                 ? getWellnessCardTotalRevenue(Number(product.price), total)
                 : total;
               const gainsLabel = product.productType === "wellness"
                 ? "Gains journaliers"
                 : product.productType === "stable" ? "Gains quotidiens" : "Gains à l’échéance";
-              const duration = Number(product.cycleDays || 90);
 
               return (
                 <article
@@ -304,9 +309,11 @@ export default function InvestPage() {
         const totalPrice = price * purchaseQuantity;
         const shortage = Math.max(0, totalPrice - balance);
         const insufficientBalance = shortage > 0;
-        const daily = Number(confirmProduct.dailyEarnings || 0);
-        const total = Number(confirmProduct.totalReturn || daily * Number(confirmProduct.cycleDays || 90));
         const duration = Number(confirmProduct.cycleDays || 90);
+        const total = Number(confirmProduct.totalReturn || Number(confirmProduct.dailyEarnings || 0) * duration);
+        const daily = confirmProduct.productType === "wellness"
+          ? getWellnessDailyEarnings(total, duration)
+          : Number(confirmProduct.dailyEarnings || 0);
         const isMaturityProduct = confirmProduct.productType === "activity";
         const gainsLabel = confirmProduct.productType === "wellness"
           ? "Gains journaliers"
