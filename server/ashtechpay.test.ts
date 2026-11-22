@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ashtechTransactionMatches, collectPayment, getTransaction } from "./ashtechpay";
+import {
+  ashtechTransactionMatches,
+  collectPayment,
+  filterAshtechCountryOperators,
+  getTransaction,
+  isAshtechOperatorActive,
+} from "./ashtechpay";
 
 const collectParams = {
   amount: 1000,
@@ -69,6 +75,32 @@ test("AshtechPay rejects provider transactions that do not match the deposit", (
   assert.equal(ashtechTransactionMatches({ ...transaction, amount: 999 }, expected), false);
   assert.equal(ashtechTransactionMatches({ ...transaction, country_code: "CI" }, expected), false);
   assert.equal(ashtechTransactionMatches({ ...transaction, reference: "another" }, expected), false);
+});
+
+test("AshtechPay hides Burkina Faso LigdiCash while keeping Orange and Moov", () => {
+  const countries = filterAshtechCountryOperators([{
+    code: "BF",
+    name: "Burkina Faso",
+    currency: "XOF",
+    operators: ["Orange Money", "Moov Money", "Wallet LigdiCash"],
+  }]);
+
+  assert.deepEqual(countries[0].operators, ["Orange Money", "Moov Money"]);
+  assert.equal(isAshtechOperatorActive(countries[0], "Orange Money"), true);
+  assert.equal(isAshtechOperatorActive(countries[0], "Moov Money"), true);
+  assert.equal(isAshtechOperatorActive(countries[0], "Wallet LigdiCash"), false);
+});
+
+test("AshtechPay excludes LigdiCash only for Burkina Faso", () => {
+  const [country] = filterAshtechCountryOperators([{
+    code: "CI",
+    name: "Côte d’Ivoire",
+    currency: "XOF",
+    operators: ["Wallet LigdiCash"],
+  }]);
+
+  assert.deepEqual(country.operators, ["Wallet LigdiCash"]);
+  assert.equal(isAshtechOperatorActive(country, "Wallet LigdiCash"), true);
 });
 
 test("AshtechPay collect sends the configured API-key owner's user ID", async () => {

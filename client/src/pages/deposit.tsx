@@ -1798,7 +1798,7 @@ export default function DepositPage() {
       </header>
       <div className="p-4 space-y-5 pb-10">
         <div className="rounded-2xl border-2 border-orange-200 bg-orange-50 p-4">
-          <p className="font-bold text-gray-900 text-sm mb-2">Code à composer</p>
+          <p className="font-bold text-gray-900 text-sm mb-2">{ashtechUssdCode ? "Code à composer" : "Code OTP"}</p>
           {ashtechUssdCode && <p className="bg-white rounded-xl border border-orange-200 px-4 py-3 text-center font-mono font-black text-2xl text-[#00CC2C] tracking-widest">{ashtechUssdCode}</p>}
           <p className="text-sm text-gray-600 mt-3">
             {ashtechUssdCode

@@ -12,6 +12,47 @@ export interface AshtechCountry {
   operators: Array<string | { code?: string; id?: string; name?: string }>;
 }
 
+function ashtechOperatorValues(operator: AshtechCountry["operators"][number]): string[] {
+  if (typeof operator === "string") return [operator];
+  return [operator.code, operator.id, operator.name].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+}
+
+function isExcludedBurkinaOperator(countryCode: string, operator: AshtechCountry["operators"][number]): boolean {
+  if (countryCode.trim().toUpperCase() !== "BF") return false;
+  return ashtechOperatorValues(operator).some((value) =>
+    value.toLowerCase().replace(/[^a-z0-9]/g, "").includes("ligdicash"),
+  );
+}
+
+export function filterAshtechCountryOperators(countries: AshtechCountry[]): AshtechCountry[] {
+  return countries.map((country) => ({
+    ...country,
+    operators: country.operators.filter(
+      (operator) => !isExcludedBurkinaOperator(country.code, operator),
+    ),
+  }));
+}
+
+export function isAshtechOperatorActive(
+  country: AshtechCountry,
+  requestedOperator: string,
+): boolean {
+  if (country.operators.some((operator) => isExcludedBurkinaOperator(country.code, operator))) {
+    // Reject the excluded operator even if a client submits it directly rather
+    // than selecting from the filtered catalogue.
+    if (requestedOperator.toLowerCase().replace(/[^a-z0-9]/g, "").includes("ligdicash")) {
+      return false;
+    }
+  }
+  const requested = requestedOperator.trim().toLowerCase();
+  return country.operators.some((operator) =>
+    !isExcludedBurkinaOperator(country.code, operator)
+    && ashtechOperatorValues(operator).some((value) => value.trim().toLowerCase() === requested),
+  );
+}
+
 export interface AshtechCollectParams {
   amount: number;
   currency: string;

@@ -173,6 +173,8 @@ import {
   isAshtechConfigured,
   mapAshtechStatus,
   AshtechApiError,
+  filterAshtechCountryOperators,
+  isAshtechOperatorActive,
   verifyAshtechWebhookSignature,
 } from "./ashtechpay";
 import { resolvePaymentWebhookBaseUrl } from "./payment-webhook-url";
@@ -2694,7 +2696,7 @@ export async function registerRoutes(
       if (!isAshtechConfigured()) {
         return res.status(503).json({ message: "AshtechPay non configuré" });
       }
-      res.json(await ashtechGetCountries());
+      res.json(filterAshtechCountryOperators(await ashtechGetCountries()));
     } catch (error: any) {
       console.error("[ashtechpay] countries error:", error);
       res.status(502).json({ message: error.message || "Impossible de charger les pays AshtechPay" });
@@ -2743,12 +2745,7 @@ export async function registerRoutes(
       }
 
       const requestedOperator = String(operator).trim();
-      const operatorIsActive = catalogCountry.operators.some((entry) => {
-        const operatorValue = typeof entry === "string"
-          ? entry
-          : entry.code || entry.id || entry.name || "";
-        return operatorValue.trim().toLowerCase() === requestedOperator.toLowerCase();
-      });
+      const operatorIsActive = isAshtechOperatorActive(catalogCountry, requestedOperator);
       if (!operatorIsActive) {
         return res.status(400).json({ message: "Opérateur non disponible pour ce pays" });
       }
@@ -2856,9 +2853,9 @@ export async function registerRoutes(
           return res.status(400).json({ message: error.message || "Référence OTP AshtechPay manquante" });
         }
 
-        const otpUssdCode = error.data.ussd_code
-          || (requestCountry === "BF" && /orange/i.test(String(requestOperator)) ? `*144*4*6*${otpAmount}#` : null)
-          || (requestCountry === "CI" && /orange/i.test(String(requestOperator)) ? "#144*82#" : null);
+        const otpUssdCode = typeof error.data.ussd_code === "string"
+          ? error.data.ussd_code
+          : null;
         const otpDeposit = otpExistingDeposit
           ? await storage.setDepositNonterminalStatus(
               otpExistingDeposit.id,

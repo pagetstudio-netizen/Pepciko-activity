@@ -24,6 +24,7 @@ OTP retries.
 `403 user_id_mismatch` when it does not match the Bearer key's profile.
 
 **How to apply:** Treat `/v1/countries` as the source of truth for operator
-names, and persist/reuse the reference from `otp_required` for the second
-`/v1/collect` request. Do not send a customer or session ID as the provider's
-`user_id`.
+names, and persist/reuse the exact reference from `otp_required`. For OTP USSD,
+display the exact `ussd_code` returned by AshTech Pay; never substitute a
+hard-coded country/operator code. Do not send a customer or session ID as the
+provider's `user_id`.
