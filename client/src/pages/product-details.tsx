@@ -158,7 +158,10 @@ export default function ProductDetailsPage() {
   const launchAlreadyPurchased = product.productType === "activity" && product.canPurchaseThisLaunch === false;
   const launchNotStarted = product.productType === "activity" && product.canPurchaseNow === false;
   const wellnessLocked = product.productType === "wellness" && product.canPurchaseWellness === false;
-  const purchaseBlocked = cannotClaimFree || stockFull || launchAlreadyPurchased || wellnessLocked;
+  const purchaseBlocked = cannotClaimFree
+    || (stockFull && product.productType !== "activity")
+    || launchAlreadyPurchased
+    || wellnessLocked;
 
   return (
     <main className="product-detail-page">
@@ -251,6 +254,13 @@ export default function ProductDetailsPage() {
             type="button"
             className="product-detail-buy"
             onClick={() => {
+              if (product.productType === "activity" && stockFull) {
+                toast({
+                  title: "Produit épuisé",
+                  description: "Toutes les places de cette offre ont été prises.",
+                });
+                return;
+              }
               if (launchNotStarted) {
                 toast({
                   title: "Pas encore disponible",
@@ -266,7 +276,7 @@ export default function ProductDetailsPage() {
           >
             {purchaseMutation.isPending
               ? "Traitement…"
-              : stockFull
+              : stockFull && product.productType !== "activity"
                 ? "Complet"
                 : launchAlreadyPurchased
                   ? "Déjà acheté"

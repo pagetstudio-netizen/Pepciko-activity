@@ -282,6 +282,11 @@ export default function InvestPage() {
                     onClick={() => {
                       if (product.isFree) {
                         navigate(`/products/${product.id}`);
+                      } else if (product.productType === "activity" && stockFull) {
+                        toast({
+                          title: "Produit épuisé",
+                          description: "Toutes les places de cette offre ont été prises.",
+                        });
                       } else if (launchNotStarted) {
                         toast({
                           title: "Pas encore disponible",
@@ -293,13 +298,13 @@ export default function InvestPage() {
                         openPurchaseModal(product);
                       }
                     }}
-                    disabled={!product.isFree && (stockFull || wellnessLocked)}
+                    disabled={!product.isFree && ((stockFull && product.productType !== "activity") || wellnessLocked)}
                     className="invest-product-cta"
                     data-testid={`button-purchase-${product.id}`}
                   >
                     {product.isFree
                       ? "Découvrir"
-                      : stockFull
+                      : stockFull && product.productType !== "activity"
                         ? "Complet"
                         : wellnessLocked
                           ? "En cours"
