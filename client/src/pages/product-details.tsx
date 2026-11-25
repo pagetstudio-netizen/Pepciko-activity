@@ -154,7 +154,7 @@ export default function ProductDetailsPage() {
   const launchAlreadyPurchased = product.productType === "activity" && product.canPurchaseThisLaunch === false;
   const launchNotStarted = product.productType === "activity" && product.canPurchaseNow === false;
   const wellnessLocked = product.productType === "wellness" && product.canPurchaseWellness === false;
-  const purchaseBlocked = cannotClaimFree || stockFull || launchAlreadyPurchased || wellnessLocked || launchNotStarted;
+  const purchaseBlocked = cannotClaimFree || stockFull || launchAlreadyPurchased || wellnessLocked;
 
   return (
     <main className="product-detail-page">
@@ -242,7 +242,18 @@ export default function ProductDetailsPage() {
           <button
             type="button"
             className="product-detail-buy"
-            onClick={() => setConfirmationOpen(true)}
+            onClick={() => {
+              if (launchNotStarted) {
+                toast({
+                  title: "Pas encore disponible",
+                  description: product.availability?.label
+                    ? `La disponibilité de ce produit est prévue le ${product.availability.label}. Veuillez revenir à cette heure.`
+                    : "Ce produit n’est pas encore disponible. Veuillez revenir à l’heure de lancement.",
+                });
+                return;
+              }
+              setConfirmationOpen(true);
+            }}
             disabled={purchaseBlocked || purchaseMutation.isPending}
           >
             {purchaseMutation.isPending
@@ -251,8 +262,6 @@ export default function ProductDetailsPage() {
                 ? "Complet"
                 : launchAlreadyPurchased
                   ? "Déjà acheté"
-                  : launchNotStarted
-                    ? `Disponible à ${product.availability?.timeLabel || "l’heure prévue"}`
                   : wellnessLocked
                     ? "En cours"
                   : cannotClaimFree

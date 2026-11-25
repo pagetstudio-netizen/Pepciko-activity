@@ -271,11 +271,20 @@ export default function InvestPage() {
 
                   <button
                     type="button"
-                    onClick={() => product.isFree
-                      ? navigate(`/products/${product.id}`)
-                      : launchNotStarted
-                        ? navigate(`/products/${product.id}`)
-                      : openPurchaseModal(product)}
+                    onClick={() => {
+                      if (product.isFree) {
+                        navigate(`/products/${product.id}`);
+                      } else if (launchNotStarted) {
+                        toast({
+                          title: "Pas encore disponible",
+                          description: product.availability?.label
+                            ? `La disponibilité de ce produit est prévue le ${product.availability.label}. Veuillez revenir à cette heure.`
+                            : "Ce produit n’est pas encore disponible. Veuillez revenir à l’heure de lancement.",
+                        });
+                      } else {
+                        openPurchaseModal(product);
+                      }
+                    }}
                     disabled={!product.isFree && (stockFull || wellnessLocked)}
                     className="invest-product-cta"
                     data-testid={`button-purchase-${product.id}`}
@@ -286,8 +295,6 @@ export default function InvestPage() {
                         ? "Complet"
                         : wellnessLocked
                           ? "En cours"
-                          : launchNotStarted
-                            ? "Voir disponibilité"
                           : "Investissez maintenant"}
                   </button>
                 </article>
