@@ -39,14 +39,17 @@ export function getActivityProfit(totalPayout: number, purchasePrice: number): n
   return totalPayout - purchasePrice;
 }
 
-export function getActivityDailyProfit(
-  totalPayout: number,
-  purchasePrice: number,
-  cycleDays: number,
-): number {
-  const totalProfit = getActivityProfit(totalPayout, purchasePrice);
-  if (!Number.isSafeInteger(cycleDays) || cycleDays <= 0 || totalProfit <= 0) return 0;
-  return totalProfit / cycleDays;
+export function getActivityDailyRevenue(totalPayout: number, cycleDays: number): number {
+  if (
+    !Number.isSafeInteger(totalPayout)
+    || totalPayout <= 0
+    || !Number.isSafeInteger(cycleDays)
+    || cycleDays <= 0
+  ) {
+    return 0;
+  }
+
+  return totalPayout / cycleDays;
 }
 
 export function getActivityProductRank(name: string): number | null {

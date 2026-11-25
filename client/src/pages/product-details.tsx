@@ -14,7 +14,7 @@ import {
   getWellnessCardTotalRevenue,
   getWellnessDailyEarnings,
 } from "@shared/wellness-product-policy";
-import { getActivityDailyProfit } from "@shared/activity-product-policy";
+import { getActivityDailyRevenue } from "@shared/activity-product-policy";
 import "./product-details.css";
 
 type ProductWithClaimStatus = Product & {
@@ -145,7 +145,7 @@ export default function ProductDetailsPage() {
   const totalReturn = Number(product.totalReturn) || Number(product.dailyEarnings || 0) * cycleDays;
   const wellnessTotalRevenue = getWellnessCardTotalRevenue(price, totalReturn);
   const activityDailyEarnings = product.productType === "activity"
-    ? getActivityDailyProfit(totalReturn, price, cycleDays)
+    ? getActivityDailyRevenue(totalReturn, cycleDays)
     : 0;
   const activityTotalRevenue = activityDailyEarnings * cycleDays;
   const dailyEarnings = product.productType === "wellness"

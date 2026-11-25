@@ -21,7 +21,7 @@ import {
 } from "@shared/wellness-product-policy";
 import {
   compareActivityProductOrder,
-  getActivityDailyProfit,
+  getActivityDailyRevenue,
 } from "@shared/activity-product-policy";
 
 import { getRobotProductImage } from "@/lib/john-deere-assets";
@@ -232,7 +232,7 @@ export default function InvestPage() {
               const duration = Number(product.cycleDays || 90);
               const total = Number(product.totalReturn || Number(product.dailyEarnings || 0) * duration);
               const activityDaily = product.productType === "activity"
-                ? getActivityDailyProfit(total, Number(product.price), duration)
+                ? getActivityDailyRevenue(total, duration)
                 : 0;
               const totalRevenue = product.productType === "wellness"
                 ? getWellnessCardTotalRevenue(Number(product.price), total)
@@ -343,7 +343,7 @@ export default function InvestPage() {
         const duration = Number(confirmProduct.cycleDays || 90);
         const total = Number(confirmProduct.totalReturn || Number(confirmProduct.dailyEarnings || 0) * duration);
         const activityDaily = confirmProduct.productType === "activity"
-          ? getActivityDailyProfit(total, price, duration)
+          ? getActivityDailyRevenue(total, duration)
           : 0;
         const totalRevenue = confirmProduct.productType === "wellness"
           ? getWellnessCardTotalRevenue(price, total)

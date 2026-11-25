@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   compareActivityProductOrder,
-  getActivityDailyProfit,
+  getActivityDailyRevenue,
   getActivityDailyProfitEstimate,
   getActivityProductRank,
   getActivityProfit,
@@ -22,13 +22,14 @@ test("activity daily profit estimate is informational and rounded down", () => {
   assert.equal(getActivityDailyProfitEstimate(1, 3), 1);
 });
 
-test("activity cards derive daily earnings from profit and cycle without changing payout", () => {
+test("activity cards derive daily revenue from the full return and cycle", () => {
   const payout = getActivityTotalPayout(3_000, 1_250);
-  const daily = getActivityDailyProfit(payout, 3_000, 3);
-  assert.equal(daily, 1_250 / 3);
-  assert.equal(daily * 3, 1_250);
+  const daily = getActivityDailyRevenue(payout, 3);
+  assert.equal(daily, 4_250 / 3);
+  assert.equal(daily * 3, 4_250);
   assert.equal(getActivityProfit(payout, 3_000), 1_250);
   assert.equal(payout, 4_250);
+  assert.equal(getActivityDailyRevenue(9_450, 3), 3_150);
 });
 
 test("activity product ranks sort by their VIP number", () => {
