@@ -19,6 +19,13 @@ import "./product-details.css";
 type ProductWithClaimStatus = Product & {
   canClaimFree?: boolean;
   stockCount?: number;
+  canPurchaseNow?: boolean;
+  availability?: {
+    dateLabel: string;
+    timeLabel: string;
+    timeZoneLabel: string;
+    label: string;
+  } | null;
   canPurchaseThisLaunch?: boolean;
   canPurchaseWellness?: boolean;
 };
@@ -145,8 +152,9 @@ export default function ProductDetailsPage() {
   const cannotClaimFree = Boolean(product.isFree && !product.canClaimFree);
   const stockFull = !product.isFree && isProductStockFull(product.stockLimit, product.stockCount || 0);
   const launchAlreadyPurchased = product.productType === "activity" && product.canPurchaseThisLaunch === false;
+  const launchNotStarted = product.productType === "activity" && product.canPurchaseNow === false;
   const wellnessLocked = product.productType === "wellness" && product.canPurchaseWellness === false;
-  const purchaseBlocked = cannotClaimFree || stockFull || launchAlreadyPurchased || wellnessLocked;
+  const purchaseBlocked = cannotClaimFree || stockFull || launchAlreadyPurchased || wellnessLocked || launchNotStarted;
 
   return (
     <main className="product-detail-page">
@@ -203,6 +211,12 @@ export default function ProductDetailsPage() {
                 <strong>{Math.max(0, product.stockLimit - (product.stockCount || 0))} / {product.stockLimit}</strong>
               </div>
             )}
+            {product.productType === "activity" && product.availability && (
+              <div className="product-detail-metric-row">
+                <span>Disponible à :</span>
+                <strong>{product.availability.label}</strong>
+              </div>
+            )}
           </div>
 
           <p className="product-detail-note">
@@ -210,6 +224,8 @@ export default function ProductDetailsPage() {
               ? "Le bonus gratuit peut être réclamé selon les règles affichées dans l’application."
               : product.productType === "wellness"
                 ? "Les gains journaliers sont crédités automatiquement sur votre solde de retrait toutes les 24 heures."
+                  : product.productType === "activity" && launchNotStarted
+                    ? `Vous pourrez acheter cette offre à partir du ${product.availability?.label || "début du lancement"}.`
                 : product.productType === "activity"
                   ? `Le prix d’achat et le bénéfice fixe seront crédités en une seule fois à la fin des ${cycleDays} jours.`
                   : "Le gain journalier sert au calcul du total. Le montant total sera versé en une seule fois à la fin de la période."}
@@ -235,6 +251,8 @@ export default function ProductDetailsPage() {
                 ? "Complet"
                 : launchAlreadyPurchased
                   ? "Déjà acheté"
+                  : launchNotStarted
+                    ? `Disponible à ${product.availability?.timeLabel || "l’heure prévue"}`
                   : wellnessLocked
                     ? "En cours"
                   : cannotClaimFree

@@ -32,6 +32,13 @@ interface ProductWithOwnership extends Product {
   canClaimFree: boolean;
   ownedCount?: number;
   stockCount?: number;
+  canPurchaseNow?: boolean;
+  availability?: {
+    dateLabel: string;
+    timeLabel: string;
+    timeZoneLabel: string;
+    label: string;
+  } | null;
   canPurchaseThisLaunch?: boolean;
   canPurchaseWellness?: boolean;
 }
@@ -213,6 +220,8 @@ export default function InvestPage() {
                 product.stockLimit,
                 product.stockCount || 0,
               );
+              const launchNotStarted = product.productType === "activity"
+                && product.canPurchaseNow === false;
               const wellnessLocked = product.productType === "wellness" && product.canPurchaseWellness === false;
               const duration = Number(product.cycleDays || 90);
               const total = Number(product.totalReturn || Number(product.dailyEarnings || 0) * duration);
@@ -264,6 +273,8 @@ export default function InvestPage() {
                     type="button"
                     onClick={() => product.isFree
                       ? navigate(`/products/${product.id}`)
+                      : launchNotStarted
+                        ? navigate(`/products/${product.id}`)
                       : openPurchaseModal(product)}
                     disabled={!product.isFree && (stockFull || wellnessLocked)}
                     className="invest-product-cta"
@@ -275,6 +286,8 @@ export default function InvestPage() {
                         ? "Complet"
                         : wellnessLocked
                           ? "En cours"
+                          : launchNotStarted
+                            ? "Voir disponibilité"
                           : "Investissez maintenant"}
                   </button>
                 </article>

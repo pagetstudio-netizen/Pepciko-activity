@@ -48,7 +48,12 @@ import {
   downloadBlogImagePreview,
   uploadBlogImage,
 } from "./blog-image-storage";
-import { isProductAvailableForCountry, isValidLaunchSchedule } from "./product-schedule";
+import {
+  getActivityLaunchDisplay,
+  isProductAvailableForCountry,
+  isScheduledProductDisplayable,
+  isValidLaunchSchedule,
+} from "./product-schedule";
 import {
   hasActiveWellnessProduct,
   hasPurchasedActivityLaunch,
@@ -1629,7 +1634,7 @@ export async function registerRoutes(
       if (!user) return res.status(401).json({ message: "Non authentifié" });
 
       const products = (await storage.getProducts())
-        .filter(product => isProductAvailableForCountry(product, user.country));
+        .filter(isScheduledProductDisplayable);
       const userProductsList = await storage.getUserProducts(req.session.userId!);
       const allUserProductsList = await storage.getAllUserProducts(req.session.userId!);
       const stockCounts = await storage.getProductStockCounts(products.map((product) => product.id));
@@ -1670,6 +1675,10 @@ export async function registerRoutes(
         ownedCount: productCounts.get(p.id) || 0,
         canClaimFree: p.isFree && canClaimFree,
         stockCount: stockCounts[p.id] || 0,
+        canPurchaseNow: isProductAvailableForCountry(p, user.country),
+        ...(p.productType === "activity"
+          ? { availability: getActivityLaunchDisplay(p, user.country) }
+          : {}),
         canPurchaseThisLaunch: p.productType !== "activity"
           || !hasPurchasedActivityLaunch(p.launchDate, p.launchTime, activityPurchases),
         canPurchaseWellness: p.productType !== "wellness" || !activeWellnessProduct,
