@@ -24,6 +24,8 @@ interface UserProductItem {
   productId: number;
   productName: string;
   productPrice: number;
+  productType: "stable" | "activity" | "wellness";
+  totalReturn: number;
   dailyEarnings: string;
   payoutMode: "daily" | "maturity";
   isActive: boolean;
@@ -1050,7 +1052,12 @@ export default function AdminUsers({ isSuperAdmin }: AdminUsersProps) {
                           <div>
                             <p className="text-sm font-medium">{up.productName}</p>
                             <p className="text-xs text-muted-foreground">
-                              {up.productPrice.toLocaleString()} F - {up.dailyEarnings.toLocaleString()} F/jour calculé
+                              {up.productPrice.toLocaleString()} F - {up.productType === "activity"
+                                ? `${Math.max(0, up.totalReturn - up.productPrice).toLocaleString()} F de bénéfice fixe`
+                                : `${up.dailyEarnings.toLocaleString()} F/jour calculé`}
+                              {up.productType === "activity"
+                                ? ` · Total reçu ${up.totalReturn.toLocaleString()} F`
+                                : ""}
                               {" · "}versé à l’échéance
                               {" · "}Jour {up.daysClaimed}/{up.totalCycle}
                               {up.isRevoked ? " (Révoqué)" : up.isActive ? " (Actif)" : " (Terminé)"}

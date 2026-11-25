@@ -56,7 +56,12 @@ const productSchema = z.object({
 
 type ProductForm = z.infer<typeof productSchema>;
 type ActivityProductDraft = Pick<ProductForm, "price" | "activityProfit" | "cycleDays" | "stockLimit">;
-type ActivityProductPayload = Omit<ActivityProductDraft, "stockLimit"> & { stockLimit: number | null };
+type ActivityProductPayload = {
+  price: string;
+  fixedProfit: number;
+  cycleDays: string;
+  stockLimit: number | null;
+};
 type AdminProduct = Product & { stockCount?: number };
 
 const emptyActivityDraft = (): ActivityProductDraft => ({
@@ -316,7 +321,7 @@ export default function AdminProducts() {
   const submitActivityBatch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!activityLaunchDate || !activityLaunchTime) {
-      setActivityFormError("Indiquez la date et l’heure locales de lancement.");
+      setActivityFormError("Indiquez la date et l’heure GMT de lancement.");
       return;
     }
     if (activityRows.some((row) =>
@@ -335,7 +340,9 @@ export default function AdminProducts() {
       launchDate: activityLaunchDate,
       launchTime: activityLaunchTime,
       products: activityRows.map((row) => ({
-        ...row,
+        price: row.price,
+        fixedProfit: Number(row.activityProfit),
+        cycleDays: row.cycleDays,
         stockLimit: row.stockLimit?.trim() ? Number(row.stockLimit) : null,
       })),
     });

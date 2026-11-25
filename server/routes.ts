@@ -5202,6 +5202,8 @@ export async function registerRoutes(
           productId: up.userProduct.productId,
           productName: up.userProduct.purchaseProductName ?? up.product.name,
           productPrice,
+          productType,
+          totalReturn: totalProfit,
           dailyEarnings: productType === "wellness"
             ? getWellnessDailyEarnings(
               getWellnessCardTotalRevenue(productPrice, totalProfit),

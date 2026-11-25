@@ -120,6 +120,9 @@ export default function MyProductsPage() {
               const totalReturn = Number(up.totalReturn ?? up.product?.totalReturn ?? 0);
               const remainingAtMaturity = Math.max(0, totalReturn - prepaidEarnings);
               const productName = up.product?.name || "Produit acheté";
+              const activityProfit = up.product?.productType === "activity"
+                ? Math.max(0, totalReturn - Number(up.product.price || 0))
+                : 0;
 
               return (
                 <article
@@ -135,8 +138,12 @@ export default function MyProductsPage() {
 
                     <div className="product-metrics">
                       <div className="product-metric">
-                        <strong>{formatCurrency(up.product?.dailyEarnings || 0)}</strong>
-                        <span>Gain journalier calculé</span>
+                        <strong>{formatCurrency(up.product?.productType === "activity"
+                          ? activityProfit
+                          : up.product?.dailyEarnings || 0)}</strong>
+                        <span>{up.product?.productType === "activity"
+                          ? "Bénéfice fixe"
+                          : "Gain journalier calculé"}</span>
                       </div>
                       <div className="product-metric">
                         <strong>{formatCurrency(earnedSoFar)}</strong>
@@ -174,8 +181,8 @@ export default function MyProductsPage() {
                     {up.status === "active" && up.product?.productType === "wellness"
                       ? `Crédit automatique toutes les 24 h : ${formatCurrency(up.product.dailyEarnings)} par jour`
                       : up.status === "active"
-                        ? `Versement unique à l’échéance : ${formatCurrency(remainingAtMaturity)}`
-                        : `Gains totaux du produit : ${formatCurrency(totalReturn)}`}
+                        ? `Versement unique à l’échéance${up.product?.productType === "activity" ? " (prix inclus)" : ""} : ${formatCurrency(remainingAtMaturity)}`
+                        : `${up.product?.productType === "activity" ? "Total reçu" : "Gains totaux du produit"} : ${formatCurrency(totalReturn)}`}
                     {prepaidEarnings > 0 && up.product?.productType !== "wellness" && (
                       <span> · Déjà versés avant la bascule : {formatCurrency(prepaidEarnings)}</span>
                     )}
