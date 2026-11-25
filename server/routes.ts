@@ -27,6 +27,10 @@ import {
   WELLNESS_PRODUCT_IMAGE_URL,
 } from "@shared/product-catalog";
 import {
+  getActivityDailyProfitEstimate,
+  getActivityTotalPayout,
+} from "@shared/activity-product-policy";
+import {
   FORTUNE_WHEEL_PRIZES,
   selectFortuneWheelOutcome,
 } from "@shared/fortune-wheel";
@@ -5321,26 +5325,26 @@ export async function registerRoutes(
       let activitySequence = getNextActivityProductNumber(await storage.getAllProducts());
       for (const row of submittedProducts) {
         const price = Number(row?.price);
-        const dailyEarnings = Number(row?.dailyEarnings);
+        const fixedProfit = Number(row?.fixedProfit);
         const cycleDays = Number(row?.cycleDays);
         const stockLimitInput = row?.stockLimit;
         const stockLimit = stockLimitInput == null || stockLimitInput === ""
           ? null
           : Number(stockLimitInput);
         if (!Number.isSafeInteger(price) || price <= 0
-          || !Number.isSafeInteger(dailyEarnings) || dailyEarnings <= 0
+          || !Number.isSafeInteger(fixedProfit) || fixedProfit <= 0
           || !Number.isSafeInteger(cycleDays) || cycleDays <= 0
           || (stockLimit !== null && (!Number.isSafeInteger(stockLimit) || stockLimit <= 0 || stockLimit > 2_147_483_647))
-          || dailyEarnings * cycleDays > 2_147_483_647) {
-          return res.status(400).json({ message: "Chaque produit doit avoir un prix, un gain journalier et une durée valides. La limite de places doit être un entier positif." });
+          || getActivityTotalPayout(price, fixedProfit) <= 0) {
+          return res.status(400).json({ message: "Chaque produit doit avoir un prix, un bénéfice fixe et une durée valides. La limite de places doit être un entier positif." });
         }
 
         rows.push({
           name: formatActivityProductName(activitySequence++),
           price,
-          dailyEarnings,
+          dailyEarnings: getActivityDailyProfitEstimate(fixedProfit, cycleDays),
           cycleDays,
-          totalReturn: dailyEarnings * cycleDays,
+          totalReturn: getActivityTotalPayout(price, fixedProfit),
           imageUrl: PRODUCT_IMAGE_URL,
           productType: "activity",
           launchDate,
@@ -5357,7 +5361,7 @@ export async function registerRoutes(
         req.session.userId!,
         "create_activity_products",
         null,
-        `${createdProducts.length} produit(s) d’activité créé(s), lancement local prévu le ${launchDate} à ${launchTime}`,
+        `${createdProducts.length} produit(s) d’activité créé(s), lancement GMT prévu le ${launchDate} à ${launchTime}`,
       );
       res.json(createdProducts);
     } catch (error: any) {
@@ -5432,6 +5436,23 @@ export async function registerRoutes(
           update.totalReturn = totalProfit;
           update.dailyEarnings = dailyEarnings;
         }
+      } else if (existing.productType === "activity") {
+        const nextPrice = body.price === undefined ? existing.price : Number(body.price);
+        const nextCycleDays = body.cycleDays === undefined ? existing.cycleDays : Number(body.cycleDays);
+        if (!Number.isSafeInteger(nextPrice) || nextPrice <= 0
+          || !Number.isSafeInteger(nextCycleDays) || nextCycleDays <= 0) {
+          return res.status(400).json({ message: "Le prix et la durée doivent être des nombres entiers positifs." });
+        }
+        const existingFixedProfit = Math.max(0, existing.totalReturn - existing.price);
+        const fixedProfit = body.profit === undefined ? existingFixedProfit : Number(body.profit);
+        const totalPayout = getActivityTotalPayout(nextPrice, fixedProfit);
+        if (!Number.isSafeInteger(fixedProfit) || fixedProfit <= 0 || totalPayout <= 0) {
+          return res.status(400).json({ message: "Le bénéfice fixe doit être un entier positif." });
+        }
+        if (body.price !== undefined) update.price = nextPrice;
+        if (body.cycleDays !== undefined) update.cycleDays = nextCycleDays;
+        update.dailyEarnings = getActivityDailyProfitEstimate(fixedProfit, nextCycleDays);
+        update.totalReturn = totalPayout;
       } else {
         for (const field of ["price", "dailyEarnings", "cycleDays"] as const) {
           if (body[field] === undefined) continue;
@@ -5485,7 +5506,7 @@ export async function registerRoutes(
         update.launchDate = launchDate;
         update.launchTime = launchTime;
       }
-      if (existing.productType !== "wellness") {
+      if (existing.productType === "stable") {
         const nextDailyEarnings = update.dailyEarnings ?? existing.dailyEarnings;
         const nextCycleDays = update.cycleDays ?? existing.cycleDays;
         if (nextDailyEarnings * nextCycleDays > 2_147_483_647) {

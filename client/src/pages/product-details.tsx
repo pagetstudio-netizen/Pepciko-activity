@@ -136,7 +136,10 @@ export default function ProductDetailsPage() {
   const wellnessTotalRevenue = getWellnessCardTotalRevenue(price, totalReturn);
   const dailyEarnings = product.productType === "wellness"
     ? getWellnessDailyEarnings(wellnessTotalRevenue, cycleDays)
-    : Number(product.dailyEarnings) || 0;
+    : product.productType === "activity" ? 0 : Number(product.dailyEarnings) || 0;
+  const activityFixedProfit = product.productType === "activity"
+    ? Math.max(0, totalReturn - price)
+    : 0;
   const fallbackImage = product.productType === "wellness" ? WELLNESS_PRODUCT_IMAGE_URL : undefined;
   const image = getRobotProductImage(product.imageUrl, product.id, product.name, product.productType);
   const cannotClaimFree = Boolean(product.isFree && !product.canClaimFree);
@@ -175,14 +178,18 @@ export default function ProductDetailsPage() {
             <div className="product-detail-metric-row">
               <span>{product.isFree
                 ? "Bonus quotidien :"
-                : product.productType === "wellness" ? "Gain journalier :" : "Gain journalier calculé :"}</span>
-              <strong>{formatFcfa(dailyEarnings)}</strong>
+                : product.productType === "activity"
+                  ? "Bénéfice fixe à l’échéance :"
+                  : product.productType === "wellness" ? "Gain journalier :" : "Gain journalier calculé :"}</span>
+              <strong>{formatFcfa(product.productType === "activity" ? activityFixedProfit : dailyEarnings)}</strong>
             </div>
             {product.productType !== "stable" && (
               <div className="product-detail-metric-row">
                 <span>{product.isFree
                   ? "Gain total :"
-                : product.productType === "wellness" ? "Revenu total du cycle :" : "Gain total à l’échéance :"}</span>
+                  : product.productType === "wellness"
+                    ? "Revenu total du cycle :"
+                    : "Total reçu à l’échéance (prix inclus) :"}</span>
                 <strong>{formatFcfa(product.productType === "wellness" ? wellnessTotalRevenue : totalReturn)}</strong>
               </div>
             )}
@@ -203,7 +210,9 @@ export default function ProductDetailsPage() {
               ? "Le bonus gratuit peut être réclamé selon les règles affichées dans l’application."
               : product.productType === "wellness"
                 ? "Les gains journaliers sont crédités automatiquement sur votre solde de retrait toutes les 24 heures."
-                : "Le gain journalier sert au calcul du total. Le montant total sera versé en une seule fois à la fin de la période."}
+                : product.productType === "activity"
+                  ? `Le prix d’achat et le bénéfice fixe seront crédités en une seule fois à la fin des ${cycleDays} jours.`
+                  : "Le gain journalier sert au calcul du total. Le montant total sera versé en une seule fois à la fin de la période."}
           </p>
         </section>
       </div>

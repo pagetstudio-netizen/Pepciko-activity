@@ -25,6 +25,10 @@ import {
   getWellnessDailyEarnings,
 } from "@shared/wellness-product-policy";
 import {
+  getActivityDailyProfitEstimate,
+  getActivityTotalPayout,
+} from "@shared/activity-product-policy";
+import {
   formatWellnessProductName,
   getNextWellnessProductNumber,
 } from "@shared/wellness-product-names";
@@ -42,6 +46,7 @@ const productSchema = z.object({
   name: z.string().min(2, "Nom requis"),
   price: z.string().min(1, "Prix requis"),
   dailyEarnings: z.string().min(1, "Valeur des gains requise"),
+  activityProfit: z.string().optional(),
   cycleDays: z.string().min(1, "Durée requise"),
   imageUrl: z.string().optional(),
   launchDate: z.string().optional(),
@@ -50,14 +55,14 @@ const productSchema = z.object({
 });
 
 type ProductForm = z.infer<typeof productSchema>;
-type ActivityProductDraft = Pick<ProductForm, "price" | "dailyEarnings" | "cycleDays" | "stockLimit">;
+type ActivityProductDraft = Pick<ProductForm, "price" | "activityProfit" | "cycleDays" | "stockLimit">;
 type ActivityProductPayload = Omit<ActivityProductDraft, "stockLimit"> & { stockLimit: number | null };
 type AdminProduct = Product & { stockCount?: number };
 
 const emptyActivityDraft = (): ActivityProductDraft => ({
   price: "",
-  dailyEarnings: "",
-  cycleDays: "80",
+  activityProfit: "",
+  cycleDays: "3",
   stockLimit: "",
 });
 
@@ -228,6 +233,9 @@ export default function AdminProducts() {
       dailyEarnings: (product.productType === "wellness"
         ? product.totalReturn
         : product.dailyEarnings).toString(),
+      activityProfit: product.productType === "activity"
+        ? Math.max(0, product.totalReturn - product.price).toString()
+        : "",
       cycleDays: product.cycleDays.toString(),
       imageUrl: product.productType === "wellness"
         ? product.imageUrl || WELLNESS_PRODUCT_IMAGE_URL
@@ -243,13 +251,17 @@ export default function AdminProducts() {
     const price = parseInt(data.price);
     const cycleDays = parseInt(data.cycleDays);
     const isWellness = selectedProduct.productType === "wellness";
+    const isActivity = selectedProduct.productType === "activity";
     const totalReturn = isWellness ? parseInt(data.dailyEarnings) : undefined;
+    const fixedProfit = isActivity ? parseInt(data.activityProfit || "0") : undefined;
     const dailyEarnings = isWellness
       ? getWellnessDailyEarnings(
         getWellnessCardTotalRevenue(price, totalReturn || 0),
         cycleDays,
       )
-      : parseInt(data.dailyEarnings);
+      : isActivity
+        ? getActivityDailyProfitEstimate(fixedProfit || 0, cycleDays)
+        : parseInt(data.dailyEarnings);
     updateMutation.mutate({
       id: selectedProduct.id,
       data: {
@@ -257,7 +269,9 @@ export default function AdminProducts() {
         price,
         dailyEarnings,
         cycleDays,
-        totalReturn: totalReturn ?? dailyEarnings * cycleDays,
+        ...(isActivity
+          ? { profit: fixedProfit }
+          : { totalReturn: totalReturn ?? dailyEarnings * cycleDays }),
         imageUrl: selectedProduct.productType === "wellness"
           ? data.imageUrl || WELLNESS_PRODUCT_IMAGE_URL
           : PRODUCT_IMAGE_URL,
@@ -307,12 +321,13 @@ export default function AdminProducts() {
     }
     if (activityRows.some((row) =>
       !Number.isSafeInteger(Number(row.price)) || Number(row.price) <= 0
-      || !Number.isSafeInteger(Number(row.dailyEarnings)) || Number(row.dailyEarnings) <= 0
+      || !Number.isSafeInteger(Number(row.activityProfit)) || Number(row.activityProfit) <= 0
       || !Number.isSafeInteger(Number(row.cycleDays)) || Number(row.cycleDays) <= 0
+      || getActivityTotalPayout(Number(row.price), Number(row.activityProfit)) <= 0
       || (Boolean(row.stockLimit?.trim())
         && (!Number.isSafeInteger(Number(row.stockLimit)) || Number(row.stockLimit) <= 0 || Number(row.stockLimit) > 2_147_483_647))
     )) {
-      setActivityFormError("Complétez le prix, le gain journalier et la durée de chaque produit, puis indiquez une limite de places valide ou laissez-la vide.");
+      setActivityFormError("Complétez le prix, le bénéfice fixe et la durée de chaque produit, puis indiquez une limite de places valide ou laissez-la vide.");
       return;
     }
     setActivityFormError("");
@@ -368,19 +383,29 @@ export default function AdminProducts() {
             <FormMessage />
           </FormItem>
         )} />
-        <FormField control={form.control} name="dailyEarnings" render={({ field }) => (
-          <FormItem>
-            <FormLabel>{allowCustomImage ? "Gain total du cycle (F)" : "Gains/jour (F)"}</FormLabel>
-            <FormControl>
-              <Input
-                {...field}
-                type="number"
-                placeholder={allowCustomImage ? "Ex: 4000" : "Ex: 300"}
-              />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )} />
+        {showSchedule ? (
+          <FormField control={form.control} name="activityProfit" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Bénéfice fixe (F)</FormLabel>
+              <FormControl><Input {...field} type="number" min="1" step="1" placeholder="Ex. : 1250" /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+        ) : (
+          <FormField control={form.control} name="dailyEarnings" render={({ field }) => (
+            <FormItem>
+              <FormLabel>{allowCustomImage ? "Bénéfice total du cycle (F)" : "Gains/jour (F)"}</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  type="number"
+                  placeholder={allowCustomImage ? "Ex: 4000" : "Ex: 300"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+        )}
       </div>
       <FormField control={form.control} name="cycleDays" render={({ field }) => (
         <FormItem>
@@ -568,11 +593,13 @@ export default function AdminProducts() {
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {product.price.toLocaleString()} F — {product.dailyEarnings.toLocaleString()} F/jour, versés à l’échéance
+                      {product.price.toLocaleString()} F — {product.productType === "activity"
+                        ? `${Math.max(0, product.totalReturn - product.price).toLocaleString()} F de bénéfice fixe, versé à l’échéance`
+                        : `${product.dailyEarnings.toLocaleString()} F/jour, versés à l’échéance`}
                     </p>
                     {product.productType === "activity" && product.launchDate && product.launchTime && (
                       <p className="text-xs text-muted-foreground">
-                        Lancement local : {product.launchDate} à {product.launchTime}
+                        Lancement GMT : {product.launchDate} à {product.launchTime}
                       </p>
                     )}
                     {product.productType === "activity" && (
@@ -614,19 +641,27 @@ export default function AdminProducts() {
                   <p className="font-medium text-foreground">{product.price.toLocaleString()} F</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Gains/jour calculés</p>
+                  <p className="text-muted-foreground">
+                    {product.productType === "activity" ? "Bénéfice fixe" : "Gains/jour calculés"}
+                  </p>
                   <p className="font-medium text-foreground">
-                    {(product.productType === "wellness"
-                      ? getWellnessDailyEarnings(
-                        getWellnessCardTotalRevenue(product.price, product.totalReturn),
-                        product.cycleDays,
-                      )
-                      : product.dailyEarnings).toLocaleString()} F
+                    {(product.productType === "activity"
+                      ? Math.max(0, product.totalReturn - product.price)
+                      : product.productType === "wellness"
+                        ? getWellnessDailyEarnings(
+                          getWellnessCardTotalRevenue(product.price, product.totalReturn),
+                          product.cycleDays,
+                        )
+                        : product.dailyEarnings).toLocaleString()} F
                   </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">
-                    {product.productType === "wellness" ? "Revenu total" : `Total (${product.cycleDays}j)`}
+                    {product.productType === "wellness"
+                      ? "Revenu total"
+                      : product.productType === "activity"
+                        ? `Total reçu (${product.cycleDays}j)`
+                        : `Total (${product.cycleDays}j)`}
                   </p>
                   <p className="font-medium text-primary">
                     {(product.productType === "wellness"
@@ -700,8 +735,8 @@ export default function AdminProducts() {
           </DialogHeader>
           <form onSubmit={submitActivityBatch} className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Tous les produits du lot seront disponibles à cette date et à cette heure locale dans chaque pays.
-              Togo, Burkina Faso et Côte d’Ivoire partagent la même heure ; Bénin, Cameroun et Niger ont une heure d’avance.
+              L’heure est en GMT (UTC). À 16 h GMT, il sera 17 h au Bénin et au Cameroun.
+              Les gains sont versés en une fois à l’échéance.
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -715,7 +750,7 @@ export default function AdminProducts() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor="activity-launch-time">Heure locale</label>
+                <label className="text-sm font-medium" htmlFor="activity-launch-time">Heure GMT</label>
                 <Input
                   id="activity-launch-time"
                   type="time"
@@ -760,13 +795,13 @@ export default function AdminProducts() {
                       required
                     />
                     <Input
-                      aria-label={`Gain journalier du produit ${index + 1}`}
+                      aria-label={`Bénéfice fixe du produit ${index + 1}`}
                       type="number"
                       min="1"
                       step="1"
-                      value={row.dailyEarnings}
-                      onChange={(event) => updateActivityRow(index, "dailyEarnings", event.target.value)}
-                      placeholder="Gain journalier (FCFA)"
+                      value={row.activityProfit}
+                      onChange={(event) => updateActivityRow(index, "activityProfit", event.target.value)}
+                      placeholder="Bénéfice fixe (FCFA)"
                       required
                     />
                     <Input
@@ -789,9 +824,12 @@ export default function AdminProducts() {
                       placeholder="Places maximum (facultatif)"
                     />
                     <p className="col-span-2 text-sm text-muted-foreground">
-                      Gain total à l’échéance :{" "}
+                      Total reçu à l’échéance (prix inclus) :{" "}
                       <strong className="text-foreground">
-                        {(Number(row.dailyEarnings || 0) * Number(row.cycleDays || 0)).toLocaleString("fr-FR")} FCFA
+                        {getActivityTotalPayout(
+                          Number(row.price || 0),
+                          Number(row.activityProfit || 0),
+                        ).toLocaleString("fr-FR")} FCFA
                       </strong>
                     </p>
                   </div>

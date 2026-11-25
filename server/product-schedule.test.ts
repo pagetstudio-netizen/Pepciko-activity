@@ -9,23 +9,22 @@ const scheduledActivity = {
   launchTime: "10:00",
 };
 
-test("activity launch uses the same local clock for UTC launch countries", () => {
+test("activity launch is scheduled at the same GMT instant for all countries", () => {
   const beforeLaunch = new Date("2026-10-07T09:59:00Z");
   const atLaunch = new Date("2026-10-07T10:00:00Z");
 
   assert.equal(isProductAvailableForCountry(scheduledActivity, "TG", beforeLaunch), false);
-  assert.equal(isProductAvailableForCountry(scheduledActivity, "CI", atLaunch), true);
-  assert.equal(isProductAvailableForCountry(scheduledActivity, "BF", atLaunch), true);
+  for (const country of ["TG", "CI", "BF", "BJ", "CM", "NE"]) {
+    assert.equal(isProductAvailableForCountry(scheduledActivity, country, beforeLaunch), false);
+    assert.equal(isProductAvailableForCountry(scheduledActivity, country, atLaunch), true);
+  }
 });
 
-test("Benin, Cameroon, and Niger observe the same local launch one hour ahead", () => {
-  const beforeLocalLaunch = new Date("2026-10-07T08:59:00Z");
-  const atLocalLaunch = new Date("2026-10-07T09:00:00Z");
-
-  for (const country of ["BJ", "CM", "NE"]) {
-    assert.equal(isProductAvailableForCountry(scheduledActivity, country, beforeLocalLaunch), false);
-    assert.equal(isProductAvailableForCountry(scheduledActivity, country, atLocalLaunch), true);
-  }
+test("a 16:00 GMT launch corresponds to 17:00 in Benin and Cameroon", () => {
+  const schedule = { ...scheduledActivity, launchDate: "2026-11-25", launchTime: "16:00" };
+  assert.equal(isProductAvailableForCountry(schedule, "TG", new Date("2026-11-25T15:59:00Z")), false);
+  assert.equal(isProductAvailableForCountry(schedule, "BJ", new Date("2026-11-25T15:59:00Z")), false);
+  assert.equal(isProductAvailableForCountry(schedule, "CM", new Date("2026-11-25T16:00:00Z")), true);
 });
 
 test("inactive, invalidly scheduled, and future products are not available", () => {
