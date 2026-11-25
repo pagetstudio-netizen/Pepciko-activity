@@ -19,6 +19,10 @@ import {
   getWellnessCardTotalRevenue,
   getWellnessDailyEarnings,
 } from "@shared/wellness-product-policy";
+import {
+  compareActivityProductOrder,
+  getActivityDailyProfit,
+} from "@shared/activity-product-policy";
 
 import { getRobotProductImage } from "@/lib/john-deere-assets";
 import EmptyState from "@/components/empty-state";
@@ -149,7 +153,9 @@ export default function InvestPage() {
   const categoryProducts = products?.filter(
     product => product.isActive && product.productType === selectedProductType,
   ) || [];
-  const displayed = categoryProducts;
+  const displayed = selectedProductType === "activity"
+    ? [...categoryProducts].sort(compareActivityProductOrder)
+    : categoryProducts;
   const formatFcfa = (amount: number | string) =>
     `${new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(amount) || 0)} ${currency}`;
 
@@ -225,18 +231,20 @@ export default function InvestPage() {
               const wellnessLocked = product.productType === "wellness" && product.canPurchaseWellness === false;
               const duration = Number(product.cycleDays || 90);
               const total = Number(product.totalReturn || Number(product.dailyEarnings || 0) * duration);
+              const activityDaily = product.productType === "activity"
+                ? getActivityDailyProfit(total, Number(product.price), duration)
+                : 0;
               const totalRevenue = product.productType === "wellness"
                 ? getWellnessCardTotalRevenue(Number(product.price), total)
-                : total;
-              const activityProfit = product.productType === "activity"
-                ? Math.max(0, total - Number(product.price))
-                : 0;
+                : product.productType === "activity"
+                  ? activityDaily * duration
+                  : total;
               const daily = product.productType === "wellness"
                 ? getWellnessDailyEarnings(totalRevenue, duration)
-                : Number(product.dailyEarnings || 0);
-              const gainsLabel = product.productType === "wellness"
-                ? "Gains journaliers"
-                : product.productType === "stable" ? "Gains quotidiens" : "Bénéfice fixe";
+                : product.productType === "activity"
+                  ? activityDaily
+                  : Number(product.dailyEarnings || 0);
+              const gainsLabel = product.productType === "wellness" ? "Gains journaliers" : "Gains quotidiens";
 
               return (
                 <article
@@ -261,10 +269,10 @@ export default function InvestPage() {
                       <span>Prix unitaire</span>
                       <strong>{product.isFree ? "Gratuit" : formatFcfa(product.price)}</strong>
                       <span>{gainsLabel}</span>
-                      <strong>{formatFcfa(product.productType === "activity" ? activityProfit : daily)}</strong>
+                      <strong>{formatFcfa(daily)}</strong>
                       <span>{product.productType === "activity" ? "Cycle" : "Revenu"}</span>
                       <strong>{duration} jours</strong>
-                      <span>{product.productType === "activity" ? "Total reçu à l’échéance" : "Revenu total"}</span>
+                      <span>Revenu total</span>
                       <strong>{formatFcfa(totalRevenue)}</strong>
                     </div>
                   </div>
@@ -334,19 +342,20 @@ export default function InvestPage() {
         const insufficientBalance = shortage > 0;
         const duration = Number(confirmProduct.cycleDays || 90);
         const total = Number(confirmProduct.totalReturn || Number(confirmProduct.dailyEarnings || 0) * duration);
+        const activityDaily = confirmProduct.productType === "activity"
+          ? getActivityDailyProfit(total, price, duration)
+          : 0;
         const totalRevenue = confirmProduct.productType === "wellness"
           ? getWellnessCardTotalRevenue(price, total)
-          : total;
-        const activityProfit = confirmProduct.productType === "activity"
-          ? Math.max(0, total - price)
-          : 0;
+          : confirmProduct.productType === "activity"
+            ? activityDaily * duration
+            : total;
         const daily = confirmProduct.productType === "wellness"
           ? getWellnessDailyEarnings(totalRevenue, duration)
-          : Number(confirmProduct.dailyEarnings || 0);
-        const isMaturityProduct = confirmProduct.productType === "activity";
-        const gainsLabel = confirmProduct.productType === "wellness"
-          ? "Gains journaliers"
-          : isMaturityProduct ? "Bénéfice fixe" : "Gains quotidiens";
+          : confirmProduct.productType === "activity"
+            ? activityDaily
+            : Number(confirmProduct.dailyEarnings || 0);
+        const gainsLabel = confirmProduct.productType === "wellness" ? "Gains journaliers" : "Gains quotidiens";
         const productCategoryLabel = confirmProduct.productType === "activity"
           ? "Activité"
           : confirmProduct.productType === "wellness" ? "Bien-être" : "Écurie";
@@ -409,7 +418,7 @@ export default function InvestPage() {
                 </div>
                 <div className="invest-modal-row">
                   <dt>{gainsLabel}</dt>
-                  <dd>{formatFcfa((isMaturityProduct ? activityProfit : daily) * purchaseQuantity)}</dd>
+                  <dd>{formatFcfa(daily * purchaseQuantity)}</dd>
                 </div>
                 <div className="invest-modal-row">
                   <dt>Revenu</dt>
@@ -417,7 +426,7 @@ export default function InvestPage() {
                 </div>
                 {confirmProduct.productType !== "stable" && (
                   <div className="invest-modal-row">
-                    <dt>{isMaturityProduct ? "Total reçu à l’échéance" : "Revenu total"}</dt>
+                    <dt>Revenu total</dt>
                     <dd>{formatFcfa(totalRevenue * purchaseQuantity)}</dd>
                   </div>
                 )}

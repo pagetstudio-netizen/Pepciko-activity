@@ -14,6 +14,7 @@ import {
   getWellnessCardTotalRevenue,
   getWellnessDailyEarnings,
 } from "@shared/wellness-product-policy";
+import { getActivityDailyProfit } from "@shared/activity-product-policy";
 import "./product-details.css";
 
 type ProductWithClaimStatus = Product & {
@@ -32,6 +33,8 @@ type ProductWithClaimStatus = Product & {
 
 const formatFcfa = (amount: number) =>
   `${Math.round(amount).toLocaleString("fr-FR")} FCFA`;
+const formatCalculatedDailyFcfa = (amount: number) =>
+  `${new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)} FCFA`;
 
 export default function ProductDetailsPage() {
   const { user, refreshUser } = useAuth();
@@ -141,12 +144,13 @@ export default function ProductDetailsPage() {
   const cycleDays = Number(product.cycleDays) || 0;
   const totalReturn = Number(product.totalReturn) || Number(product.dailyEarnings || 0) * cycleDays;
   const wellnessTotalRevenue = getWellnessCardTotalRevenue(price, totalReturn);
+  const activityDailyEarnings = product.productType === "activity"
+    ? getActivityDailyProfit(totalReturn, price, cycleDays)
+    : 0;
+  const activityTotalRevenue = activityDailyEarnings * cycleDays;
   const dailyEarnings = product.productType === "wellness"
     ? getWellnessDailyEarnings(wellnessTotalRevenue, cycleDays)
-    : product.productType === "activity" ? 0 : Number(product.dailyEarnings) || 0;
-  const activityFixedProfit = product.productType === "activity"
-    ? Math.max(0, totalReturn - price)
-    : 0;
+    : product.productType === "activity" ? activityDailyEarnings : Number(product.dailyEarnings) || 0;
   const fallbackImage = product.productType === "wellness" ? WELLNESS_PRODUCT_IMAGE_URL : undefined;
   const image = getRobotProductImage(product.imageUrl, product.id, product.name, product.productType);
   const cannotClaimFree = Boolean(product.isFree && !product.canClaimFree);
@@ -187,9 +191,11 @@ export default function ProductDetailsPage() {
               <span>{product.isFree
                 ? "Bonus quotidien :"
                 : product.productType === "activity"
-                  ? "Bénéfice fixe à l’échéance :"
+                  ? "Gains quotidiens :"
                   : product.productType === "wellness" ? "Gain journalier :" : "Gain journalier calculé :"}</span>
-              <strong>{formatFcfa(product.productType === "activity" ? activityFixedProfit : dailyEarnings)}</strong>
+              <strong>{product.productType === "activity"
+                ? formatCalculatedDailyFcfa(activityDailyEarnings)
+                : formatFcfa(dailyEarnings)}</strong>
             </div>
             {product.productType !== "stable" && (
               <div className="product-detail-metric-row">
@@ -197,8 +203,10 @@ export default function ProductDetailsPage() {
                   ? "Gain total :"
                   : product.productType === "wellness"
                     ? "Revenu total du cycle :"
-                    : "Total reçu à l’échéance (prix inclus) :"}</span>
-                <strong>{formatFcfa(product.productType === "wellness" ? wellnessTotalRevenue : totalReturn)}</strong>
+                    : "Revenu total :"}</span>
+                <strong>{formatFcfa(product.productType === "wellness"
+                  ? wellnessTotalRevenue
+                  : product.productType === "activity" ? activityTotalRevenue : totalReturn)}</strong>
               </div>
             )}
             <div className="product-detail-metric-row">
